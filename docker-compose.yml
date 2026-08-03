@@ -23,6 +23,17 @@ services:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
 
+  node-exporter:
+    image: prom/node-exporter
+    container_name: node-exporter
+    restart: unless-stopped
+
+    command:
+      - "--path.rootfs=/host"
+
+    volumes:
+      - /:/host:ro
+
 volumes:
   prometheus_data:
   grafana_data:
