@@ -1,0 +1,11 @@
+route:
+  receiver: "local"
+  group_by:
+    - alertname
+    - job
+  group_wait: 10s
+  group_interval: 30s
+  repeat_interval: 1h
+
+receivers:
+  - name: "local"
