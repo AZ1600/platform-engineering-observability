@@ -36,6 +36,23 @@ services:
     volumes:
       - /:/host:ro
 
+  alertmanager:
+    image: prom/alertmanager
+    container_name: alertmanager
+    restart: unless-stopped
+
+    ports:
+      - "127.0.0.1:9093:9093"
+
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+
 volumes:
   prometheus_data:
   grafana_data:
+  alertmanager_data:
