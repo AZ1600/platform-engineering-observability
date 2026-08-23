@@ -379,7 +379,7 @@ External notification delivery through email, Slack, or Microsoft Teams is not y
 
 **Olawale Azeez**
 
-Cloud Engineer | Platform Engineer | AWS Solutions Architect
+Cloud Engineer | Platform Engineer | AWS Certified Developer
 
 Focused on Platform Engineering, Internal Developer Platforms, Kubernetes, Cloud Infrastructure, and Developer Experience.
 
