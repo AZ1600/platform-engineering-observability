@@ -490,7 +490,192 @@ Values are constrained between:
 ```text
 0% and 100%
 ```
+# SLO Burn-Rate Alerting
 
+The project also monitors how quickly the service consumes its available error budget.
+
+Burn rate compares the observed failure rate with the amount of failure allowed by the SLO.
+
+```text
+Burn Rate
+=
+Observed bad-event rate
+/
+Allowed bad-event rate
+```
+
+A burn rate of:
+
+```text
+1x
+```
+
+means the service is consuming its error budget at exactly the sustainable rate.
+
+Higher values indicate increasingly rapid budget consumption.
+
+---
+
+## Availability Burn Rate
+
+The availability SLO is:
+
+```text
+99%
+```
+
+which permits:
+
+```text
+1% failed requests
+```
+
+For example:
+
+```text
+50% failures
+÷
+1% allowed failures
+=
+50x burn rate
+```
+
+---
+
+## Latency Burn Rate
+
+The latency SLO requires:
+
+```text
+95% of requests complete within 1 second
+```
+
+which permits:
+
+```text
+5% slow requests
+```
+
+For example:
+
+```text
+50% slow requests
+÷
+5% allowed
+=
+10x burn rate
+```
+
+---
+
+## Multi-Window Detection
+
+Prometheus records burn rate over multiple windows:
+
+```text
+1 minute
+5 minutes
+15 minutes
+```
+
+The rules are stored in:
+
+```text
+prometheus/rules/burn-rate.yml
+```
+
+### Fast Burn
+
+Fast-burn alerts require both the short windows to exceed:
+
+```text
+4x
+```
+
+the sustainable error-budget consumption rate.
+
+```text
+1m burn rate > 4
+AND
+5m burn rate > 4
+```
+
+These alerts are classified as:
+
+```text
+severity = critical
+```
+
+Current fast-burn alerts:
+
+```text
+DemoApiAvailabilityFastBurn
+DemoApiLatencyFastBurn
+```
+
+### Slow Burn
+
+Slow-burn alerts detect lower but sustained error-budget consumption.
+
+```text
+5m burn rate > 1
+AND
+15m burn rate > 1
+```
+
+These alerts are classified as:
+
+```text
+severity = warning
+```
+
+Current slow-burn alerts:
+
+```text
+DemoApiAvailabilitySlowBurn
+DemoApiLatencySlowBurn
+```
+
+---
+
+## Slack Burn-Rate Notifications
+
+Burn-rate alerts use the existing Alertmanager-to-Slack notification pipeline.
+
+```text
+Application degradation
+        ↓
+SLI falls below objective
+        ↓
+Error budget consumption
+        ↓
+Burn-rate calculation
+        ↓
+Fast / Slow burn alert
+        ↓
+Alertmanager
+        ↓
+Slack
+```
+
+The validation test produced both fast and slow burn alerts.
+
+Fast-burn alerts reached:
+
+```text
+FIRING
+RESOLVED
+```
+
+and the sustained test also caused both slow-burn alerts to reach:
+
+```text
+FIRING
+```
+
+![Slack Burn Rate Alerts](docs/screenshots/slack-burn-rate-alerts.png)
+
+This demonstrates that alerting can be based not only on an instantaneous threshold, but also on the rate at which reliability budget is being consumed.
 ---
 
 # No-Traffic Handling
@@ -924,6 +1109,10 @@ SLO dashboard                    ✓
 Grafana provisioning             ✓
 GitHub Actions validation        ✓
 Failure/recovery testing         ✓
+Burn-rate recording rules         ✓
+Fast-burn alerting                 ✓
+Slow-burn alerting                 ✓
+Burn-rate Slack notifications      ✓
 ```
 
 ---
@@ -1012,9 +1201,11 @@ After that, the platform can be extended toward Kubernetes deployment and longer
 [Complete] Error budget monitoring
 [Complete] SLO dashboard
 
-[Complete] GitHub Actions validation
+[Complete] Fast-burn alerting
+[Complete] Slow-burn alerting
+[Complete] Burn-rate Slack notifications
 
-[Next] SLO burn-rate alerting
+[Complete] GitHub Actions validation
 
 [Future] Longer production-style SLO windows
 [Future] Kubernetes deployment
