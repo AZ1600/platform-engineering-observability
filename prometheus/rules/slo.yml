@@ -1,0 +1,107 @@
+groups:
+  - name: demo-api-sli-slo
+    interval: 15s
+    rules:
+      - record: demo_api:sli_availability_ratio:5m
+        expr: |
+          (
+            sum(
+              rate(
+                http_requests_total{
+                  job="demo-api",
+                  handler!="/metrics",
+                  status!~"5.."
+                }[5m]
+              )
+            )
+            /
+            sum(
+              rate(
+                http_requests_total{
+                  job="demo-api",
+                  handler!="/metrics"
+                }[5m]
+              )
+            )
+          )
+          and on()
+          (
+            sum(
+              rate(
+                http_requests_total{
+                  job="demo-api",
+                  handler!="/metrics"
+                }[5m]
+              )
+            ) > 0
+          )
+
+      - record: demo_api:sli_latency_under_1s_ratio:5m
+        expr: |
+          (
+            sum(
+              rate(
+                http_request_duration_seconds_bucket{
+                  job="demo-api",
+                  handler!="/metrics",
+                  le="1.0"
+                }[5m]
+              )
+            )
+            /
+            sum(
+              rate(
+                http_request_duration_seconds_count{
+                  job="demo-api",
+                  handler!="/metrics"
+                }[5m]
+              )
+            )
+          )
+          and on()
+          (
+            sum(
+              rate(
+                http_request_duration_seconds_count{
+                  job="demo-api",
+                  handler!="/metrics"
+                }[5m]
+              )
+            ) > 0
+          )
+
+      - record: demo_api:slo_availability_target
+        expr: vector(0.99)
+
+      - record: demo_api:slo_latency_target
+        expr: vector(0.95)
+
+      - record: demo_api:error_budget_availability_remaining:5m
+        expr: |
+          clamp_max(
+            clamp_min(
+              1 -
+              (
+                (1 - demo_api:sli_availability_ratio:5m)
+                /
+                (1 - 0.99)
+              ),
+              1
+            ),
+            0
+          )
+
+      - record: demo_api:error_budget_latency_remaining:5m
+        expr: |
+          clamp_max(
+            clamp_min(
+              1 -
+              (
+                (1 - demo_api:sli_latency_under_1s_ratio:5m)
+                /
+                (1 - 0.95)
+              ),
+              1
+            ),
+            0
+          )
