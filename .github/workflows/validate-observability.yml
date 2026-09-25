@@ -1,0 +1,70 @@
+name: Validate Observability Configuration
+
+on:
+  pull_request:
+    branches:
+      - main
+
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: observability-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate configuration
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Show Docker versions
+        run: |
+          docker --version
+          docker compose version
+
+      - name: Validate Docker Compose
+        run: |
+          docker compose config --quiet
+          echo "Docker Compose configuration valid"
+
+      - name: Build demo API image
+        run: |
+          docker compose build demo-api
+
+      - name: Validate Python application
+        run: |
+          python3 -m compileall -q app
+          echo "Python application syntax valid"
+
+      - name: Validate Prometheus configuration and rules
+        run: |
+          docker compose run --rm --no-deps \
+            --entrypoint /bin/promtool \
+            prometheus \
+            check config /etc/prometheus/prometheus.yml
+
+      - name: Validate Alertmanager configuration
+        run: |
+          docker compose run --rm --no-deps \
+            --entrypoint /bin/amtool \
+            alertmanager \
+            check-config /etc/alertmanager/alertmanager.yml
+
+      - name: Validate Grafana dashboard JSON
+        run: |
+          set -e
+
+          for dashboard in grafana/dashboards/*.json; do
+            echo "Validating ${dashboard}"
+            python3 -m json.tool "${dashboard}" > /dev/null
+          done
+
+          echo "Grafana dashboard JSON valid"
