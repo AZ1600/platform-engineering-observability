@@ -3,29 +3,57 @@ receivers:
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
+
       http:
         endpoint: 0.0.0.0:4318
+
+  filelog/demo-api:
+    include:
+      - /var/log/demo-api/*.log
+
+    start_at: end
+
+    include_file_name: false
+    include_file_path: false
+
 
 processors:
   memory_limiter:
     check_interval: 1s
     limit_mib: 256
 
+  resource/demo-api:
+    attributes:
+      - key: service.name
+        value: demo-api
+        action: upsert
+
+      - key: deployment.environment
+        value: local
+        action: upsert
+
   batch:
     timeout: 5s
+
 
 exporters:
   otlp/tempo:
     endpoint: tempo:4317
+
     tls:
       insecure: true
+
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
 
   debug:
     verbosity: basic
 
+
 extensions:
   health_check:
     endpoint: 0.0.0.0:13133
+
 
 service:
   extensions:
@@ -42,4 +70,17 @@ service:
 
       exporters:
         - otlp/tempo
+        - debug
+
+    logs:
+      receivers:
+        - filelog/demo-api
+
+      processors:
+        - memory_limiter
+        - resource/demo-api
+        - batch
+
+      exporters:
+        - otlphttp/loki
         - debug

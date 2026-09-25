@@ -32,6 +32,7 @@ services:
     depends_on:
       - prometheus
       - tempo
+      - loki
 
 
   node-exporter:
@@ -79,6 +80,21 @@ services:
       - "127.0.0.1:3200:3200"
 
 
+  loki:
+    image: grafana/loki
+    container_name: loki
+    restart: unless-stopped
+
+    command:
+      - "-config.file=/etc/loki/loki.yml"
+
+    volumes:
+      - ./loki/loki.yml:/etc/loki/loki.yml:ro
+
+    ports:
+      - "127.0.0.1:3100:3100"
+
+
   otel-collector:
     image: otel/opentelemetry-collector-contrib
     container_name: otel-collector
@@ -89,9 +105,11 @@ services:
 
     volumes:
       - ./otel/collector.yml:/etc/otelcol-contrib/collector.yml:ro
+      - app_logs:/var/log/demo-api:ro
 
     depends_on:
       - tempo
+      - loki
 
 
   demo-api:
@@ -104,6 +122,10 @@ services:
     environment:
       OTEL_SERVICE_NAME: demo-api
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      APP_LOG_PATH: /var/log/demo-api/app.log
+
+    volumes:
+      - app_logs:/var/log/demo-api
 
     ports:
       - "127.0.0.1:8000:8000"
@@ -117,3 +139,4 @@ volumes:
   grafana_data:
   alertmanager_data:
   tempo_data:
+  app_logs:

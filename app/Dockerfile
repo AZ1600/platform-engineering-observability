@@ -17,6 +17,9 @@ RUN useradd \
     --uid 10001 \
     appuser
 
+RUN mkdir -p /var/log/demo-api \
+    && chown -R appuser:appuser /var/log/demo-api
+
 COPY main.py .
 
 USER appuser
