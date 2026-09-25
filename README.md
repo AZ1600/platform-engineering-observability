@@ -1,71 +1,77 @@
 # Platform Engineering Observability
 
-A reproducible local observability platform built with **OpenTelemetry, Prometheus, Grafana, Tempo, Node Exporter, Alertmanager, FastAPI, Docker, and Docker Compose**.
+A reproducible local observability platform built with **OpenTelemetry, Prometheus, Grafana, Loki, Tempo, Node Exporter, Alertmanager, FastAPI, Docker, and Docker Compose**.
 
-The project demonstrates both infrastructure-level and application-level observability through metrics, traces, alerting, failure testing, and automatically provisioned monitoring components.
-
-The goal is to show how an application request can move through a complete telemetry pipeline rather than only displaying infrastructure dashboards.
+The project demonstrates practical observability across the three core telemetry signals:
 
 ```text
-Application request
-        ↓
-OpenTelemetry
-        ↓
-OpenTelemetry Collector
-        ↓
-Grafana Tempo
-        ↓
-Grafana trace exploration
-
-        +
-
-Application metrics
-        ↓
-Prometheus
-        ↓
-Grafana
-
-        +
-
-Infrastructure metrics
-        ↓
-Node Exporter
-        ↓
-Prometheus
-        ↓
-Grafana
-
-        +
-
-Prometheus alert
-        ↓
-Alertmanager
+Metrics
+Logs
+Traces
 ```
+
+It also demonstrates alerting, deliberate failure testing, structured logging, distributed tracing, and log-to-trace correlation.
 
 ---
 
-# Project Highlights
+# Project Overview
 
-The platform currently demonstrates:
+The platform combines infrastructure monitoring and application observability in one local environment.
+
+```text
+                    ┌─────────────────┐
+                    │    FastAPI      │
+                    │    demo-api     │
+                    └────────┬────────┘
+                             │
+             ┌───────────────┼────────────────┐
+             │               │                │
+             │               │                │
+          Metrics           Logs            Traces
+             │               │                │
+             v               v                v
+        Prometheus     OTel Collector    OTel Collector
+             │               │                │
+             │               v                v
+             │              Loki             Tempo
+             │               │                │
+             └───────────────┼────────────────┘
+                             v
+                           Grafana
+
+Node Exporter
+     │
+     v
+Prometheus
+     │
+     v
+Grafana
+
+Prometheus Alerts
+     │
+     v
+Alertmanager
+```
+
+The repository currently demonstrates:
 
 - FastAPI application instrumentation
-- OpenTelemetry tracing
-- OpenTelemetry Collector
-- Grafana Tempo trace storage
-- Grafana trace exploration
-- Custom application spans
-- Successful request tracing
-- Error request tracing
-- Slow-request tracing
 - Prometheus application metrics
 - Node Exporter infrastructure metrics
-- Automated Grafana provisioning
-- Prometheus health monitoring
-- Prometheus alert evaluation
+- OpenTelemetry distributed tracing
+- OpenTelemetry Collector
+- Grafana Tempo
+- Structured JSON application logs
+- Grafana Loki
+- Log-to-trace correlation
+- Custom application spans
+- Slow request testing
+- HTTP failure testing
+- Grafana provisioning
+- Prometheus alert rules
 - Alertmanager routing
-- Failure and recovery testing
+- Failure and recovery validation
 - Reproducible Docker Compose deployment
-- Configuration stored in version control
 
 ---
 
@@ -73,67 +79,45 @@ The platform currently demonstrates:
 
 ```mermaid
 flowchart TB
+    Client["Client / curl"]
+    API["FastAPI demo-api"]
 
-    USER["Client / curl"]
+    OTel["OpenTelemetry Collector"]
 
-    API["FastAPI Demo API<br/>:8000"]
+    Prometheus["Prometheus"]
+    Node["Node Exporter"]
+    Loki["Grafana Loki"]
+    Tempo["Grafana Tempo"]
+    Grafana["Grafana"]
+    Alertmanager["Alertmanager"]
 
-    OTEL["OpenTelemetry SDK"]
+    Client -->|HTTP| API
 
-    COLLECTOR["OpenTelemetry Collector"]
+    API -->|/metrics| Prometheus
+    Node -->|Infrastructure metrics| Prometheus
 
-    TEMPO["Grafana Tempo<br/>Trace Backend"]
+    API -->|Structured JSON logs| OTel
+    API -->|OTLP traces| OTel
 
-    PROM["Prometheus<br/>Metrics + Alert Evaluation"]
+    OTel -->|Logs| Loki
+    OTel -->|Traces| Tempo
 
-    NODE["Node Exporter<br/>Infrastructure Metrics"]
+    Prometheus -->|Metrics| Grafana
+    Loki -->|Logs| Grafana
+    Tempo -->|Traces| Grafana
 
-    ALERT["Alertmanager"]
+    Prometheus -->|Alerts| Alertmanager
 
-    GRAFANA["Grafana<br/>Metrics + Trace Exploration"]
-
-    USER -->|"HTTP request"| API
-
-    API --> OTEL
-    OTEL -->|"OTLP gRPC :4317"| COLLECTOR
-    COLLECTOR -->|"OTLP"| TEMPO
-
-    API -->|"/metrics"| PROM
-    NODE -->|"System metrics :9100"| PROM
-
-    PROM -->|"PromQL"| GRAFANA
-    TEMPO -->|"Trace queries"| GRAFANA
-
-    PROM -->|"Firing alerts"| ALERT
+    Loki -. Trace ID correlation .-> Tempo
 ```
 
 ---
 
-# Observability Layers
+# Observability Signals
 
-The project separates observability into several layers.
+## Metrics
 
-## Application Tracing
-
-```text
-FastAPI
-   ↓
-OpenTelemetry instrumentation
-   ↓
-OTLP
-   ↓
-OpenTelemetry Collector
-   ↓
-Tempo
-   ↓
-Grafana
-```
-
-This provides request-level visibility into application execution.
-
----
-
-## Application Metrics
+Application metrics:
 
 ```text
 FastAPI
@@ -145,11 +129,7 @@ Prometheus
 Grafana
 ```
 
-The demo application exposes Prometheus-compatible HTTP metrics.
-
----
-
-## Infrastructure Metrics
+Infrastructure metrics:
 
 ```text
 Node Exporter
@@ -159,49 +139,46 @@ Prometheus
 Grafana
 ```
 
-Node Exporter provides CPU, memory, filesystem, and host-level metrics.
+---
+
+## Logs
+
+The application writes structured JSON logs.
+
+Example:
+
+```json
+{
+  "level": "ERROR",
+  "service": "demo-api",
+  "message": "intentional application failure",
+  "trace_id": "6a2a28b377efabd3b5c4ccc3314467e9",
+  "span_id": "58ee7634418ccfab",
+  "route": "/error",
+  "status_code": 500,
+  "error_type": "observability_test"
+}
+```
+
+The log pipeline is:
+
+```text
+FastAPI
+   ↓
+JSON log
+   ↓
+OpenTelemetry Collector
+   ↓
+Loki
+   ↓
+Grafana
+```
 
 ---
 
-## Alerting
+## Traces
 
-```text
-Prometheus rule
-      ↓
-Alert state
-      ↓
-Alertmanager
-```
-
-Prometheus evaluates health rules and forwards firing alerts to Alertmanager.
-
----
-
-# Project Showcase
-
-## OpenTelemetry Application Trace
-
-The FastAPI application is instrumented with OpenTelemetry.
-
-A request to:
-
-```text
-GET /work
-```
-
-produces both automatic HTTP spans and custom application spans.
-
-The trace contains:
-
-```text
-GET /work
-   ↓
-perform-demo-work
-   ↓
-database-simulation
-```
-
-This demonstrates that telemetry is flowing through:
+The tracing pipeline is:
 
 ```text
 FastAPI
@@ -215,44 +192,127 @@ Tempo
 Grafana
 ```
 
-![Grafana Tempo work trace](docs/screenshots/grafana-tempo-work-trace.png)
-
-The example trace completed in approximately 315 ms and shows the relationship between the incoming HTTP request and internal application operations.
+The application contains both automatic HTTP instrumentation and custom spans.
 
 ---
 
-## Application Failure Trace
+# Project Showcase
 
-The demo API also contains an intentional failure endpoint:
+## Distributed Trace
+
+A request to:
+
+```text
+GET /work
+```
+
+produces the following trace structure:
+
+```text
+GET /work
+└── perform-demo-work
+    └── database-simulation
+```
+
+![Grafana Tempo work trace](docs/screenshots/grafana-tempo-work-trace.png)
+
+This demonstrates both automatic FastAPI instrumentation and custom application spans.
+
+---
+
+## Error Trace
+
+The demo application contains an intentional failure endpoint:
 
 ```text
 GET /error
 ```
 
-The endpoint returns:
+which returns:
 
 ```text
 HTTP/1.1 500 Internal Server Error
 ```
 
-This provides a controlled failure scenario for investigating errors through the tracing pipeline.
+The failed request is visible through Tempo.
 
 ![Grafana Tempo error trace](docs/screenshots/grafana-tempo-error-trace.png)
 
-This demonstrates how traces can help investigate failed application requests rather than only monitoring successful traffic.
+---
+
+## Structured Application Logs
+
+Application logs are written as structured JSON and collected by the OpenTelemetry Collector.
+
+Grafana Loki makes fields such as these searchable:
+
+```text
+level
+service
+message
+route
+status_code
+trace_id
+span_id
+duration_seconds
+error_type
+```
+
+![Grafana Loki structured logs](docs/screenshots/grafana-loki-structured-logs.png)
+
+The test produced:
+
+```text
+INFO
+WARNING
+ERROR
+```
+
+log levels from normal, slow, and failed requests.
 
 ---
 
-## Grafana Infrastructure Dashboard
+## Log-to-Trace Correlation
 
-Grafana automatically provisions the **Node Exporter Overview** dashboard.
+Each application log includes the active OpenTelemetry:
 
-It displays:
+```text
+trace_id
+span_id
+```
 
-- Target availability
+Grafana uses the `trace_id` as a derived field.
+
+This creates the workflow:
+
+```text
+Loki log
+   ↓
+TraceID
+   ↓
+View Trace
+   ↓
+Tempo
+   ↓
+Matching application trace
+```
+
+![Grafana Loki trace correlation](docs/screenshots/grafana-loki-trace-correlation.png)
+
+This allows an operator to move directly from a log entry to the distributed trace associated with the same request.
+
+---
+
+## Infrastructure Dashboard
+
+Grafana automatically provisions the Node Exporter dashboard.
+
+It provides visibility into:
+
 - CPU usage
 - Memory usage
 - Filesystem usage
+- Target health
 
 ![Grafana Node Exporter Dashboard](docs/screenshots/grafana-node-exporter-dashboard.png)
 
@@ -260,9 +320,7 @@ It displays:
 
 ## Prometheus Targets
 
-Prometheus collects metrics from the monitoring stack.
-
-The project includes scrape targets for:
+Prometheus currently scrapes:
 
 ```text
 prometheus
@@ -272,15 +330,9 @@ demo-api
 
 ![Prometheus Targets](docs/screenshots/prometheus-targets.png)
 
-The demo API exposes metrics through:
-
-```text
-GET /metrics
-```
-
 ---
 
-## Target Health and Recovery
+## Target Failure and Recovery
 
 The Prometheus:
 
@@ -288,31 +340,25 @@ The Prometheus:
 up
 ```
 
-metric can be queried through Grafana.
-
-The recorded failure test shows:
+metric was used to observe an intentional Node Exporter outage.
 
 ```text
-Node Exporter
-    ↓
 UP = 1
-    ↓
-Intentional outage
-    ↓
+   ↓
+Node Exporter stopped
+   ↓
 UP = 0
-    ↓
-Recovery
-    ↓
+   ↓
+Node Exporter restarted
+   ↓
 UP = 1
 ```
 
 ![Grafana Target Health Query](docs/screenshots/grafana-target-health-query.png)
 
-This provides visible evidence of both failure detection and recovery.
-
 ---
 
-## Prometheus Alert Firing
+## Prometheus Alert
 
 The project includes a:
 
@@ -320,15 +366,12 @@ The project includes a:
 TargetDown
 ```
 
-Prometheus alert rule.
+alert.
 
-The alert fires when a monitored target remains unavailable for one minute.
-
-The test recorded:
+The rule fires when a Prometheus target remains unavailable for one minute.
 
 ```text
 alertname="TargetDown"
-instance="node-exporter:9100"
 severity="warning"
 state="FIRING"
 ```
@@ -337,52 +380,42 @@ state="FIRING"
 
 ---
 
-## Alertmanager Routing
+## Alertmanager
 
-Prometheus forwards firing alerts to Alertmanager.
-
-Alertmanager groups the `TargetDown` alert and routes it to the configured local receiver.
-
-![Alertmanager TargetDown Alert](docs/screenshots/alertmanager-target-down.png)
-
-This demonstrates the complete alert flow:
+Prometheus sends firing alerts to Alertmanager.
 
 ```text
 Target failure
       ↓
-Prometheus scrape failure
+Prometheus
       ↓
-Prometheus alert rule
-      ↓
-FIRING
+TargetDown
       ↓
 Alertmanager
 ```
+
+![Alertmanager TargetDown Alert](docs/screenshots/alertmanager-target-down.png)
 
 ---
 
 # Demo Application
 
-The repository includes a small FastAPI workload specifically designed for observability testing.
-
-Available endpoints include:
+The FastAPI application exists specifically to generate predictable telemetry.
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /` | Service information |
-| `GET /health` | Successful health request |
-| `GET /work` | Normal application work with nested spans |
-| `GET /slow` | Intentional slow request |
+| `GET /` | Basic application response |
+| `GET /health` | Healthy request |
+| `GET /work` | Normal work with nested spans |
+| `GET /slow` | Intentional high-latency request |
 | `GET /error` | Intentional HTTP 500 failure |
 | `GET /metrics` | Prometheus metrics |
 
 ---
 
-## `/work`
+# `/work`
 
-The `/work` endpoint creates custom spans around application operations.
-
-Conceptually:
+The `/work` endpoint creates nested application spans.
 
 ```text
 GET /work
@@ -392,135 +425,57 @@ GET /work
           └── database-simulation
 ```
 
-This makes it possible to see time spent inside individual application operations.
+It also writes a structured log containing timing information.
 
----
-
-## `/slow`
-
-The `/slow` endpoint intentionally waits approximately two seconds before returning.
-
-It is useful for investigating:
+Example fields:
 
 ```text
-High latency
-Slow traces
-Request duration
+work_duration_seconds
+database_duration_seconds
+total_duration_seconds
+trace_id
+span_id
 ```
 
 ---
 
-## `/error`
+# `/slow`
+
+The `/slow` endpoint intentionally takes approximately:
+
+```text
+2 seconds
+```
+
+It produces a:
+
+```text
+WARNING
+```
+
+structured log and a corresponding trace.
+
+This allows latency investigation in both Loki and Tempo.
+
+---
+
+# `/error`
 
 The `/error` endpoint intentionally returns:
 
 ```text
-500 Internal Server Error
+HTTP 500
 ```
 
-It provides a predictable failure for trace investigation and future alert testing.
-
----
-
-# Components
-
-## FastAPI Demo API
-
-Provides an instrumented application workload that produces:
-
-- HTTP traces
-- Custom spans
-- Prometheus metrics
-- Successful requests
-- Slow requests
-- Failed requests
-
----
-
-## OpenTelemetry SDK
-
-The application uses OpenTelemetry instrumentation to capture HTTP requests and custom spans.
-
-Trace resource metadata includes the service name:
+and produces:
 
 ```text
-demo-api
+ERROR
 ```
 
----
+level structured logging.
 
-## OpenTelemetry Collector
-
-The Collector receives application traces using OTLP.
-
-```text
-demo-api
-   ↓
-OTLP gRPC
-   ↓
-otel-collector:4317
-```
-
-The Collector processes traces before forwarding them to Tempo.
-
----
-
-## Grafana Tempo
-
-Tempo stores application traces.
-
-It receives OTLP traces from the OpenTelemetry Collector and makes them available to Grafana.
-
-The project uses local Tempo storage for development and demonstration purposes.
-
----
-
-## Prometheus
-
-Prometheus collects metrics and evaluates alert rules.
-
-Current scrape targets include:
-
-```text
-prometheus:9090
-node-exporter:9100
-demo-api:8000
-```
-
----
-
-## Node Exporter
-
-Node Exporter exposes infrastructure metrics including:
-
-- CPU
-- Memory
-- Filesystem
-- Operating-system statistics
-
----
-
-## Grafana
-
-Grafana provides one interface for:
-
-```text
-Prometheus metrics
-+
-Tempo traces
-```
-
-Both data sources are provisioned automatically from version-controlled configuration.
-
----
-
-## Alertmanager
-
-Alertmanager receives, groups, and routes alerts generated by Prometheus.
-
-The current repository uses a local receiver for demonstration.
-
-External delivery such as Slack, Microsoft Teams, PagerDuty, or email is not yet configured.
+The resulting log includes the same trace ID used by Tempo.
 
 ---
 
@@ -539,6 +494,8 @@ External delivery such as Slack, Microsoft Teams, PagerDuty, or email is not yet
 ├── docs/
 │   └── screenshots/
 │       ├── alertmanager-target-down.png
+│       ├── grafana-loki-structured-logs.png
+│       ├── grafana-loki-trace-correlation.png
 │       ├── grafana-node-exporter-dashboard.png
 │       ├── grafana-target-health-query.png
 │       ├── grafana-tempo-error-trace.png
@@ -555,15 +512,18 @@ External delivery such as Slack, Microsoft Teams, PagerDuty, or email is not yet
 │       │   └── dashboards.yml
 │       │
 │       └── datasources/
+│           ├── loki.yml
 │           ├── prometheus.yml
 │           └── tempo.yml
+│
+├── loki/
+│   └── loki.yml
 │
 ├── otel/
 │   └── collector.yml
 │
 ├── prometheus/
 │   ├── prometheus.yml
-│   │
 │   └── rules/
 │       └── targets.yml
 │
@@ -576,17 +536,150 @@ External delivery such as Slack, Microsoft Teams, PagerDuty, or email is not yet
 
 ---
 
+# Components
+
+## FastAPI
+
+Provides a small workload that generates predictable:
+
+```text
+Metrics
+Logs
+Traces
+Errors
+Latency
+```
+
+---
+
+## OpenTelemetry
+
+OpenTelemetry provides application tracing and context propagation.
+
+Trace context is also added to structured logs.
+
+---
+
+## OpenTelemetry Collector
+
+The Collector currently handles:
+
+```text
+Traces
+Logs
+```
+
+Trace pipeline:
+
+```text
+OTLP
+  ↓
+Collector
+  ↓
+Tempo
+```
+
+Log pipeline:
+
+```text
+filelog receiver
+      ↓
+Collector
+      ↓
+OTLP HTTP
+      ↓
+Loki
+```
+
+---
+
+## Prometheus
+
+Prometheus collects:
+
+```text
+Application metrics
+Infrastructure metrics
+Target health
+```
+
+and evaluates alert rules.
+
+---
+
+## Node Exporter
+
+Provides infrastructure metrics including:
+
+- CPU
+- Memory
+- Filesystems
+- Operating-system statistics
+
+---
+
+## Grafana Tempo
+
+Tempo stores application traces.
+
+Grafana uses Tempo for:
+
+- Trace search
+- Span inspection
+- Latency investigation
+- Error investigation
+
+---
+
+## Grafana Loki
+
+Loki stores application logs.
+
+Grafana uses Loki for:
+
+- Log search
+- Structured field parsing
+- Log-level investigation
+- Error investigation
+- Trace correlation
+
+---
+
+## Grafana
+
+Grafana provides a single interface for:
+
+```text
+Metrics
+Logs
+Traces
+```
+
+Data sources are automatically provisioned from Git.
+
+---
+
+## Alertmanager
+
+Alertmanager receives alerts generated by Prometheus.
+
+The current project uses a local receiver.
+
+---
+
 # Running the Platform
 
 ## Prerequisites
 
 Install:
 
-- Docker Desktop
-- Docker Compose
-- Git
+```text
+Docker Desktop
+Docker Compose
+Git
+```
 
-Verify Docker:
+Verify:
 
 ```bash
 docker --version
@@ -595,7 +688,7 @@ docker compose version
 
 ---
 
-## Clone the Repository
+## Clone
 
 ```bash
 git clone https://github.com/AZ1600/platform-engineering-observability.git
@@ -605,19 +698,15 @@ cd platform-engineering-observability
 
 ---
 
-## Validate Docker Compose
+## Validate
 
 ```bash
 docker compose config
 ```
 
-A successful command should render the final Compose configuration without errors.
-
 ---
 
-## Build and Start
-
-Because the repository now includes the custom FastAPI image, use:
+## Start
 
 ```bash
 docker compose up -d --build
@@ -625,18 +714,19 @@ docker compose up -d --build
 
 ---
 
-## Verify Containers
+## Check Services
 
 ```bash
 docker compose ps
 ```
 
-The following seven services should be running:
+Expected services:
 
 ```text
 alertmanager
 demo-api
 grafana
+loki
 node-exporter
 otel-collector
 prometheus
@@ -650,40 +740,28 @@ tempo
 | Service | URL |
 |---|---|
 | Demo API | `http://127.0.0.1:8000` |
-| API health | `http://127.0.0.1:8000/health` |
-| API metrics | `http://127.0.0.1:8000/metrics` |
+| Demo health | `http://127.0.0.1:8000/health` |
+| Demo metrics | `http://127.0.0.1:8000/metrics` |
 | Grafana | `http://127.0.0.1:3000` |
 | Prometheus | `http://127.0.0.1:9090` |
 | Prometheus targets | `http://127.0.0.1:9090/targets` |
-| Prometheus rules | `http://127.0.0.1:9090/rules` |
 | Prometheus alerts | `http://127.0.0.1:9090/alerts` |
 | Alertmanager | `http://127.0.0.1:9093` |
-| Tempo HTTP endpoint | `http://127.0.0.1:3200` |
-
-Grafana's initial local credentials are:
-
-```text
-Username: admin
-Password: admin
-```
-
-Grafana may request a password change after the first login.
+| Loki | `http://127.0.0.1:3100` |
+| Tempo | `http://127.0.0.1:3200` |
 
 ---
 
-# Generate Application Telemetry
+# Generate Telemetry
 
 Generate normal traffic:
 
 ```bash
 curl http://127.0.0.1:8000/health
-
-curl http://127.0.0.1:8000/work
-
 curl http://127.0.0.1:8000/work
 ```
 
-Generate a slow request:
+Generate latency:
 
 ```bash
 curl http://127.0.0.1:8000/slow
@@ -695,7 +773,7 @@ Generate an intentional error:
 curl -i http://127.0.0.1:8000/error
 ```
 
-Expected response:
+Expected:
 
 ```text
 HTTP/1.1 500 Internal Server Error
@@ -703,21 +781,116 @@ HTTP/1.1 500 Internal Server Error
 
 ---
 
-# Verify Prometheus Metrics
+# Verify Structured Logs
 
-Check the application's metrics endpoint:
+Inspect the application log:
 
 ```bash
-curl -s http://127.0.0.1:8000/metrics | head -40
+docker compose exec demo-api \
+  tail -n 10 /var/log/demo-api/app.log
 ```
 
-Open Prometheus targets:
+The output should contain JSON records.
+
+---
+
+# Query Logs in Grafana
+
+Open:
+
+```text
+Grafana
+   ↓
+Explore
+   ↓
+Loki
+```
+
+Run:
+
+```logql
+{service_name="demo-api"} | json
+```
+
+This parses the JSON application logs into searchable fields.
+
+---
+
+# Log-to-Trace Correlation
+
+Expand a Loki log record.
+
+The log contains:
+
+```text
+trace_id
+```
+
+Grafana exposes:
+
+```text
+TraceID
+View Trace
+```
+
+Click:
+
+```text
+View Trace
+```
+
+to open the matching trace in Tempo.
+
+This demonstrates correlation across observability signals rather than treating logs and traces as separate systems.
+
+---
+
+# Trace Search
+
+Open:
+
+```text
+Grafana
+   ↓
+Explore
+   ↓
+Tempo
+```
+
+Search:
+
+```text
+Service Name = demo-api
+Span Name = GET /work
+```
+
+The resulting trace should show:
+
+```text
+GET /work
+└── perform-demo-work
+    └── database-simulation
+```
+
+---
+
+# Metrics
+
+Prometheus scrapes:
+
+```text
+prometheus:9090
+node-exporter:9100
+demo-api:8000
+```
+
+Open:
 
 ```text
 http://127.0.0.1:9090/targets
 ```
 
-Expected targets:
+Expected:
 
 ```text
 prometheus      UP
@@ -725,213 +898,9 @@ node-exporter   UP
 demo-api        UP
 ```
 
-In Grafana Explore, select Prometheus and run:
-
-```promql
-up
-```
-
-The query should show healthy scrape targets.
-
 ---
 
-# Verify OpenTelemetry Tracing
-
-Generate a request:
-
-```bash
-curl http://127.0.0.1:8000/work
-```
-
-Open Grafana:
-
-```text
-http://127.0.0.1:3000
-```
-
-Navigate to:
-
-```text
-Explore
-   ↓
-Tempo
-```
-
-Search using:
-
-```text
-Service Name = demo-api
-Span Name = GET /work
-```
-
-The resulting trace should contain:
-
-```text
-GET /work
-   ↓
-perform-demo-work
-   ↓
-database-simulation
-```
-
-The equivalent TraceQL concept is:
-
-```text
-{ resource.service.name = "demo-api" && name = "GET /work" }
-```
-
----
-
-# Verify Failure Tracing
-
-Generate an intentional failure:
-
-```bash
-curl -i http://127.0.0.1:8000/error
-```
-
-Then search Tempo using:
-
-```text
-Service Name = demo-api
-Span Name = GET /error
-```
-
-This provides a repeatable failure investigation exercise.
-
----
-
-# OpenTelemetry Pipeline
-
-The application exports traces through OTLP gRPC:
-
-```text
-demo-api
-   |
-   | OTLP
-   | port 4317
-   v
-OpenTelemetry Collector
-   |
-   | OTLP
-   v
-Tempo
-```
-
-The Collector configuration is stored in:
-
-```text
-otel/collector.yml
-```
-
-The Tempo configuration is stored in:
-
-```text
-tempo/tempo.yml
-```
-
----
-
-# Grafana Data Sources
-
-Grafana data sources are provisioned automatically.
-
-## Prometheus
-
-Configuration:
-
-```text
-grafana/provisioning/datasources/prometheus.yml
-```
-
-Used for:
-
-```text
-Infrastructure metrics
-Application metrics
-PromQL
-```
-
----
-
-## Tempo
-
-Configuration:
-
-```text
-grafana/provisioning/datasources/tempo.yml
-```
-
-Used for:
-
-```text
-Application traces
-Trace search
-Span inspection
-Latency investigation
-Failure investigation
-```
-
----
-
-# Infrastructure Dashboard
-
-Grafana provisions the **Node Exporter Overview** dashboard inside the:
-
-```text
-Infrastructure
-```
-
-folder.
-
-The dashboard includes:
-
-- Node Exporter availability
-- CPU usage
-- Memory usage
-- Filesystem usage
-
-Dashboard definition:
-
-```text
-grafana/dashboards/node-exporter.json
-```
-
-Provisioning configuration:
-
-```text
-grafana/provisioning/dashboards/dashboards.yml
-```
-
----
-
-# Alerting
-
-The `TargetDown` rule detects failed Prometheus scrape targets.
-
-The rule is stored in:
-
-```text
-prometheus/rules/targets.yml
-```
-
-The alert expression is:
-
-```promql
-up == 0
-```
-
-The condition must remain true for one minute:
-
-```yaml
-for: 1m
-```
-
-before the alert fires.
-
----
-
-## Test Target Failure
+# Alert Testing
 
 Stop Node Exporter:
 
@@ -939,9 +908,13 @@ Stop Node Exporter:
 docker compose stop node-exporter
 ```
 
-Prometheus should detect the failed scrape.
+After the configured delay:
 
-The alert progresses through:
+```text
+TargetDown
+```
+
+should transition through:
 
 ```text
 INACTIVE
@@ -951,39 +924,23 @@ PENDING
 FIRING
 ```
 
-Check Prometheus alerts:
-
-```text
-http://127.0.0.1:9090/alerts
-```
-
-Check Alertmanager:
-
-```text
-http://127.0.0.1:9093
-```
-
-Restore the target:
+Restore:
 
 ```bash
 docker compose start node-exporter
 ```
 
-The alert should resolve after successful scraping resumes.
-
 ---
 
 # Configuration Validation
 
-## Docker Compose
+Validate Docker Compose:
 
 ```bash
 docker compose config
 ```
 
----
-
-## Prometheus
+Validate Prometheus:
 
 ```bash
 docker compose run --rm --no-deps \
@@ -991,9 +948,7 @@ docker compose run --rm --no-deps \
   check config /etc/prometheus/prometheus.yml
 ```
 
----
-
-## Alertmanager
+Validate Alertmanager:
 
 ```bash
 docker compose run --rm --no-deps \
@@ -1001,390 +956,273 @@ docker compose run --rm --no-deps \
   check-config /etc/alertmanager/alertmanager.yml
 ```
 
----
-
-## Grafana Dashboard JSON
+Validate dashboard JSON:
 
 ```bash
 python3 -m json.tool \
   grafana/dashboards/node-exporter.json > /dev/null
 ```
 
-No output means the JSON parsed successfully.
+---
+
+# Failure Testing
+
+The project deliberately generates failure scenarios.
+
+## Infrastructure Failure
+
+```text
+Stop Node Exporter
+      ↓
+Prometheus detects target failure
+      ↓
+TargetDown alert
+      ↓
+Alertmanager
+```
+
+## Application Failure
+
+```text
+GET /error
+      ↓
+HTTP 500
+      ↓
+ERROR structured log
+      ↓
+Loki
+      ↓
+Trace ID
+      ↓
+Tempo
+```
+
+## Application Latency
+
+```text
+GET /slow
+      ↓
+~2 second request
+      ↓
+WARNING log
+      ↓
+Tempo trace
+```
+
+This makes the lab useful for investigation rather than only showing healthy dashboards.
 
 ---
 
-# Troubleshooting
-
-## Tempo Configuration Compatibility
-
-During the tracing implementation, the first Tempo configuration used settings that were not accepted by the current Tempo image.
-
-Tempo repeatedly restarted with configuration parsing errors involving:
-
-```text
-ingester
-compactor
-```
-
-The configuration was simplified for the current local single-binary Tempo deployment.
-
-After correction, Tempo successfully started:
-
-```text
-Starting GRPC server
-Starting HTTP server
-Tempo started
-```
-
-This reinforced the importance of validating configuration against the actual software version being deployed.
-
----
+# Troubleshooting Lessons
 
 ## Dockerfile Parsing
 
-The first FastAPI Docker build failed because the JSON-form `CMD` instruction had been split incorrectly across multiple Dockerfile lines.
+The first FastAPI image build failed because the JSON `CMD` syntax was split incorrectly.
 
-Docker interpreted:
-
-```text
-"uvicorn",
-```
-
-as a Dockerfile instruction.
-
-The command was corrected to:
+The corrected form is:
 
 ```dockerfile
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
-After rebuilding, the demo API started successfully.
-
 ---
 
-# Failure Testing Philosophy
+## Tempo Configuration
 
-This project intentionally creates failures rather than only displaying healthy dashboards.
+The first Tempo configuration used settings that were not accepted by the current Tempo image.
 
-Examples include:
+The configuration was simplified for a local single-binary deployment.
+
+Tempo then successfully started its:
 
 ```text
-Node Exporter stopped
-        ↓
-Prometheus target DOWN
-        ↓
-TargetDown alert
-        ↓
-Alertmanager
-
-GET /error
-        ↓
-HTTP 500
-        ↓
-OpenTelemetry trace
-        ↓
-Tempo
-        ↓
-Grafana investigation
-
-GET /slow
-        ↓
-~2 second request
-        ↓
-Trace latency visible
+gRPC receiver :4317
+HTTP receiver :4318
 ```
 
-This makes the project useful for practising investigation and recovery rather than only configuration.
+---
+
+## Grafana Provisioning
+
+When Loki was added, Grafana was already running.
+
+Restarting Grafana caused it to re-read:
+
+```text
+grafana/provisioning/datasources/
+```
+
+and provision the Loki data source.
+
+This demonstrated that provisioning files are loaded as part of the Grafana startup lifecycle.
 
 ---
 
-# Current Observability Coverage
-
-The project currently covers:
+# Current Coverage
 
 ```text
-Infrastructure metrics
-        ✓
-
-Application metrics
-        ✓
-
-Application tracing
-        ✓
-
-Custom spans
-        ✓
-
-Latency investigation
-        ✓
-
-Failure traces
-        ✓
-
-Prometheus alerting
-        ✓
-
-Alert routing
-        ✓
-
-Failure/recovery testing
-        ✓
-
-Provisioned dashboards
-        ✓
+Infrastructure metrics        ✓
+Application metrics           ✓
+Distributed tracing           ✓
+Custom spans                  ✓
+Structured logging            ✓
+Centralized logging           ✓
+Log parsing                   ✓
+Log-to-trace correlation      ✓
+Latency investigation         ✓
+Failure investigation         ✓
+Prometheus alerts             ✓
+Alertmanager routing          ✓
+Failure/recovery testing      ✓
+Grafana provisioning          ✓
 ```
 
 ---
 
 # Current Limitations
 
-This is a local platform-engineering lab rather than a production monitoring platform.
+This is intentionally a local engineering lab.
 
 Current limitations include:
 
-- Single demo application service
+- Single application service
+- Local Loki storage
 - Local Tempo storage
-- No central application log aggregation yet
-- No Loki integration yet
-- No production alert notification receiver
-- No authentication on local monitoring services
+- No production object storage
 - No high availability
+- No external alert delivery
+- No authentication on local monitoring interfaces
 - No Kubernetes deployment
-- No remote object storage for telemetry
-
-These are deliberate boundaries for the current phase.
+- No production retention strategy
 
 ---
 
 # Next Phase
 
-The next major improvement is **centralized application logging**.
+The next phase will focus on **application-focused monitoring**.
 
-Planned architecture:
-
-```text
-Application logs
-      ↓
-Collector / log pipeline
-      ↓
-Grafana Loki
-      ↓
-Grafana
-```
-
-This will extend the project from:
+The goal is to build a RED dashboard:
 
 ```text
-Metrics + Traces
+Rate
+Errors
+Duration
 ```
 
-to:
+Planned panels include:
 
 ```text
-Metrics + Logs + Traces
+Request rate
+HTTP error rate
+P50 latency
+P95 latency
+P99 latency
+Requests by route
+Requests by status code
 ```
 
-After Loki, planned improvements include:
-
-- structured application logging
-- correlation between logs and traces
-- RED application dashboard
-- request-rate visualization
-- error-rate visualization
-- latency percentiles
-- application-level Prometheus alert rules
-- SLOs and SLIs
-- GitHub Actions configuration validation
-- external Alertmanager notification integration
-- Kubernetes deployment
-
----
-
-# Engineering Lessons
-
-This project demonstrates several important observability principles.
-
-## Metrics and traces answer different questions
-
-Metrics can show:
+After the dashboard:
 
 ```text
-Something is slow
-Something is failing
-A target is unavailable
+Application alerts
+        ↓
+SLIs
+        ↓
+SLOs
+        ↓
+Error budget
 ```
-
-Traces can help show:
-
-```text
-Where time was spent
-Which operation failed
-How a request moved through the application
-```
-
-Using both provides stronger operational evidence.
-
----
-
-## Healthy infrastructure does not guarantee a healthy application
-
-A server can be running while the application returns errors.
-
-That is why the project monitors both:
-
-```text
-Infrastructure
-+
-Application behaviour
-```
-
----
-
-## Instrumentation should be tested with deliberate failures
-
-Successful requests alone do not prove that an observability platform is useful during incidents.
-
-The project deliberately generates:
-
-```text
-Target outages
-HTTP 500 responses
-Slow requests
-```
-
-and verifies that they are visible in the telemetry systems.
-
----
-
-## Observability configuration should be reproducible
-
-Prometheus rules, Grafana provisioning, Tempo configuration, OpenTelemetry Collector configuration, and Docker Compose definitions are stored in Git.
-
-This makes the monitoring environment repeatable instead of depending on manually configured dashboards and services.
-
----
-
-# Stopping the Platform
-
-Stop all containers while preserving persistent volumes:
-
-```bash
-docker compose down
-```
-
-Remove the platform and persistent local data:
-
-```bash
-docker compose down -v
-```
-
-The second command permanently deletes local Docker volume data for services such as Prometheus, Grafana, Alertmanager, and Tempo.
-
----
-
-# macOS Note
-
-When Docker Desktop runs on macOS, Node Exporter primarily reports metrics from Docker Desktop's Linux virtual machine rather than every metric from the macOS host.
-
-This is expected for this local environment.
-
----
-
-# Technology Stack
-
-## Application
-
-- Python
-- FastAPI
-- Uvicorn
-
-## Telemetry
-
-- OpenTelemetry SDK
-- OpenTelemetry Collector
-
-## Metrics
-
-- Prometheus
-- Node Exporter
-
-## Tracing
-
-- Grafana Tempo
-
-## Visualization
-
-- Grafana
-
-## Alerting
-
-- Prometheus alert rules
-- Alertmanager
-
-## Platform
-
-- Docker
-- Docker Compose
-
----
-
-# Skills Demonstrated
-
-This repository demonstrates practical experience with:
-
-- Observability engineering
-- Platform engineering
-- OpenTelemetry
-- Distributed tracing concepts
-- Prometheus
-- PromQL
-- Grafana
-- Grafana Tempo
-- Node Exporter
-- Alertmanager
-- FastAPI instrumentation
-- Custom application spans
-- HTTP failure investigation
-- Latency investigation
-- Metrics collection
-- Alert management
-- Docker
-- Docker Compose
-- Configuration as Code
-- Failure testing
-- Troubleshooting
 
 ---
 
 # Roadmap
 
 ```text
-[Complete] Prometheus metrics
+[Complete] Prometheus
 [Complete] Node Exporter
 [Complete] Grafana provisioning
 [Complete] Infrastructure dashboard
 [Complete] Target health monitoring
 [Complete] Prometheus alerts
-[Complete] Alertmanager routing
-[Complete] FastAPI demo workload
-[Complete] OpenTelemetry instrumentation
+[Complete] Alertmanager
+[Complete] FastAPI workload
+[Complete] OpenTelemetry tracing
 [Complete] OpenTelemetry Collector
 [Complete] Grafana Tempo
-[Complete] Application trace search
-[Complete] Custom nested spans
-[Complete] HTTP failure trace
-[Complete] Slow-request test
+[Complete] Custom spans
+[Complete] Slow request tracing
+[Complete] Failure tracing
+[Complete] Structured JSON logging
+[Complete] Grafana Loki
+[Complete] Log parsing
+[Complete] Log-to-trace correlation
 
-[Next] Structured application logs
-[Next] Grafana Loki
-[Next] Log and trace correlation
-[Next] RED dashboard
-[Next] Application alerts
-[Next] SLOs and SLIs
+[Next] RED application dashboard
+[Next] Application-level alerts
+[Next] SLIs
+[Next] SLOs
+[Next] Error budgets
 [Next] GitHub Actions validation
-[Next] External alert notifications
+[Next] External Alertmanager notifications
 [Future] Kubernetes deployment
+```
+
+---
+
+# Technology Stack
+
+**Application**
+
+```text
+Python
+FastAPI
+Uvicorn
+```
+
+**Telemetry**
+
+```text
+OpenTelemetry
+OpenTelemetry Collector
+```
+
+**Metrics**
+
+```text
+Prometheus
+Node Exporter
+```
+
+**Logs**
+
+```text
+Grafana Loki
+```
+
+**Traces**
+
+```text
+Grafana Tempo
+```
+
+**Visualization**
+
+```text
+Grafana
+```
+
+**Alerting**
+
+```text
+Prometheus Rules
+Alertmanager
+```
+
+**Platform**
+
+```text
+Docker
+Docker Compose
 ```
 
 ---
@@ -1395,7 +1233,7 @@ This repository demonstrates practical experience with:
 
 Cloud Engineer | Platform Engineer | DevOps Engineer
 
-Focused on Platform Engineering, Internal Developer Platforms, Kubernetes, Cloud Infrastructure, Observability, and Developer Experience.
+Focused on Platform Engineering, Kubernetes, Cloud Infrastructure, Observability, Internal Developer Platforms, and Developer Experience.
 
 Portfolio: [Olawale Azeez Portfolio](https://az1600.github.io)
 
