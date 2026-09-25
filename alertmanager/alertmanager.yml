@@ -1,11 +1,34 @@
 route:
   receiver: "local"
+
   group_by:
     - alertname
     - job
+
   group_wait: 10s
   group_interval: 30s
   repeat_interval: 1h
 
+  routes:
+    - receiver: "slack-notifications"
+      matchers:
+        - severity=~"warning|critical"
+
 receivers:
   - name: "local"
+
+  - name: "slack-notifications"
+    slack_configs:
+      - api_url_file: /run/secrets/slack_webhook_url
+        channel: "#new-channel"
+        send_resolved: true
+
+        title: >-
+          {{ if eq .Status "firing" }}FIRING{{ else }}RESOLVED{{ end }}
+          | {{ .CommonLabels.alertname }}
+
+        text: >-
+          *Severity:* {{ .CommonLabels.severity }}
+          {{ "\n" }}*Service:* {{ .CommonLabels.service }}
+          {{ "\n" }}*Summary:* {{ .CommonAnnotations.summary }}
+          {{ "\n" }}*Description:* {{ .CommonAnnotations.description }}

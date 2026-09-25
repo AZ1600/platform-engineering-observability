@@ -25,6 +25,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Create CI secret fixtures
+        run: |
+          mkdir -p .secrets
+          printf '%s' \
+            'https://example.invalid/slack-webhook' \
+            > .secrets/slack_webhook_url
+
       - name: Show Docker versions
         run: |
           docker --version
