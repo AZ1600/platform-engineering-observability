@@ -274,6 +274,141 @@ sum(
 
 The `/metrics` endpoint is excluded so Prometheus scrape traffic does not distort application traffic.
 
+# Application-Level Alerting
+
+The RED metrics are also used for application-level Prometheus alerting.
+
+The project currently includes two application alerts:
+
+```text
+DemoApiHigh5xxErrorRate
+DemoApiHighP95Latency
+```
+
+The rules are stored in:
+
+```text
+prometheus/rules/application.yml
+```
+
+---
+
+## High 5xx Error Rate
+
+The `DemoApiHigh5xxErrorRate` alert detects sustained HTTP server errors.
+
+The alert condition is:
+
+```text
+5xx error rate > 10%
+for at least 1 minute
+```
+
+The expression excludes `/metrics` traffic so Prometheus scraping does not distort the application error rate.
+
+```text
+FastAPI failures
+      ↓
+http_requests_total
+      ↓
+Prometheus
+      ↓
+5xx rate > 10%
+      ↓
+PENDING
+      ↓
+FIRING
+      ↓
+Alertmanager
+```
+
+---
+
+## High P95 Latency
+
+The `DemoApiHighP95Latency` alert detects sustained application latency.
+
+The alert condition is:
+
+```text
+P95 latency > 1 second
+for at least 1 minute
+```
+
+It uses the high-resolution Prometheus request-duration histogram.
+
+```text
+Slow requests
+      ↓
+Request duration histogram
+      ↓
+P95 calculation
+      ↓
+P95 > 1 second
+      ↓
+PENDING
+      ↓
+FIRING
+      ↓
+Alertmanager
+```
+
+---
+
+## Rule Health
+
+Prometheus successfully loaded and evaluated both application rules alongside the existing infrastructure `TargetDown` rule.
+
+![Prometheus Application Rule Health](docs/screenshots/prometheus-application-rule-health.png)
+
+The loaded rules are:
+
+```text
+DemoApiHigh5xxErrorRate
+DemoApiHighP95Latency
+TargetDown
+```
+
+---
+
+## Application Alert Validation
+
+Deliberate `/error` and `/slow` traffic was generated for more than one minute.
+
+This caused both application alerts to transition into the firing state.
+
+![Prometheus Application Alerts](docs/screenshots/prometheus-application-alerts.png)
+
+The test demonstrates that the RED metrics are not only visualized in Grafana but can also drive automated operational alerting.
+
+---
+
+## Alertmanager Routing
+
+Both firing application alerts were successfully forwarded to Alertmanager.
+
+![Alertmanager Application Alerts](docs/screenshots/alertmanager-application-alerts.png)
+
+Alertmanager received:
+
+```text
+DemoApiHigh5xxErrorRate
+DemoApiHighP95Latency
+```
+
+The complete application alert path is therefore:
+
+```text
+Application behaviour
+        ↓
+Prometheus metrics
+        ↓
+RED alert expression
+        ↓
+Prometheus alert
+        ↓
+Alertmanager
+```
 ---
 
 ## HTTP 5xx Error Rate
@@ -1400,17 +1535,9 @@ Current limitations include:
 
 # Next Phase
 
-The next phase will build **application-level alerts** on top of the RED signals.
+The next phase will introduce **Service Level Indicators and Service Level Objectives**.
 
-Examples:
-
-```text
-High 5xx error rate
-High P95 latency
-Application target unavailable
-```
-
-The planned progression is:
+The progression is now:
 
 ```text
 RED dashboard
@@ -1424,6 +1551,14 @@ SLOs
 Error budget
 ```
 
+Initial SLI/SLO work will focus on:
+
+```text
+Availability
+Successful request ratio
+Latency
+Error budget
+```
 ---
 
 # Roadmap
@@ -1452,8 +1587,8 @@ Error budget
 [Complete] HTTP error-rate monitoring
 [Complete] P50/P95/P99 latency monitoring
 [Complete] Route-level application monitoring
+[Complete] Application-level Prometheus alerts
 
-[Next] Application-level Prometheus alerts
 [Next] SLIs
 [Next] SLOs
 [Next] Error budgets
