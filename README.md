@@ -13,19 +13,23 @@ Traces
 It also demonstrates:
 
 - application-level RED monitoring
-- structured logging
+- structured application logging
 - distributed tracing
 - log-to-trace correlation
 - infrastructure monitoring
-- alert evaluation and routing
+- Prometheus application alerting
+- Alertmanager routing
+- Service Level Indicators
+- Service Level Objectives
+- error budget monitoring
 - deliberate latency and failure testing
-- reproducible monitoring configuration
+- configuration-as-code for dashboards and monitoring components
 
 ---
 
 # Project Overview
 
-The platform combines application and infrastructure observability in one local environment.
+The platform combines infrastructure monitoring and application observability in one local environment.
 
 ```text
                     ┌─────────────────┐
@@ -34,7 +38,6 @@ The platform combines application and infrastructure observability in one local 
                     └────────┬────────┘
                              │
              ┌───────────────┼────────────────┐
-             │               │                │
              │               │                │
           Metrics           Logs            Traces
              │               │                │
@@ -56,34 +59,48 @@ Prometheus
      v
 Grafana
 
-Prometheus Alerts
+Prometheus Rules
      │
      v
 Alertmanager
+
+RED Metrics
+     │
+     v
+SLIs
+     │
+     v
+SLOs
+     │
+     v
+Error Budgets
 ```
 
 The repository currently demonstrates:
 
 - FastAPI application instrumentation
 - Prometheus application metrics
+- Node Exporter infrastructure metrics
 - RED application monitoring
 - request-rate monitoring
 - HTTP error-rate monitoring
 - P50, P95, and P99 latency
-- route-level request analysis
-- route-level latency analysis
-- Node Exporter infrastructure metrics
+- route-level metrics
+- application-level Prometheus alerts
 - OpenTelemetry distributed tracing
 - custom application spans
-- OpenTelemetry Collector
-- Grafana Tempo
-- structured JSON application logs
+- structured JSON logs
 - Grafana Loki
+- Grafana Tempo
 - log-to-trace correlation
+- availability SLI
+- latency SLI
+- availability SLO
+- latency SLO
+- error budget calculation
 - Grafana dashboard provisioning
-- Prometheus alert rules
 - Alertmanager routing
-- deliberate failure and recovery testing
+- failure and recovery validation
 - reproducible Docker Compose deployment
 
 ---
@@ -115,7 +132,7 @@ flowchart TB
     OTel -->|Logs| Loki
     OTel -->|Traces| Tempo
 
-    Prometheus -->|Metrics + RED dashboard| Grafana
+    Prometheus -->|Metrics + RED + SLO data| Grafana
     Loki -->|Logs| Grafana
     Tempo -->|Traces| Grafana
 
@@ -128,7 +145,7 @@ flowchart TB
 
 # Observability Model
 
-The project now covers four operational areas:
+The project currently covers:
 
 ```text
 Metrics
@@ -138,39 +155,49 @@ Logs
 Traces
   +
 Alerting
+  +
+SLIs / SLOs
 ```
 
-These answer different questions.
+Each signal answers a different operational question.
 
 ## Metrics
 
 ```text
-What is happening?
-How often?
-How slow?
-How many failures?
+How much traffic is the service receiving?
+How many requests are failing?
+How slow is the service?
+Is infrastructure healthy?
 ```
 
 ## Logs
 
 ```text
 What event occurred?
-What fields were recorded?
-What error was produced?
+What request failed?
+What structured fields were recorded?
 ```
 
 ## Traces
 
 ```text
 Where did the request spend time?
-Which internal operation was involved?
-Which trace belongs to this log?
+Which internal operation was slow?
+Which trace belongs to a log entry?
 ```
 
 ## Alerts
 
 ```text
-When should an operator be notified?
+When has a failure condition persisted long enough to require attention?
+```
+
+## SLIs and SLOs
+
+```text
+How reliably is the service meeting defined objectives?
+How much failure is acceptable?
+How much error budget remains?
 ```
 
 ---
@@ -185,10 +212,10 @@ E = Errors
 D = Duration
 ```
 
-This focuses application monitoring on three important questions:
+This focuses monitoring on three questions:
 
 ```text
-How much traffic is the application receiving?
+How much traffic is the service receiving?
 
 How many requests are failing?
 
@@ -199,7 +226,7 @@ How long are requests taking?
 
 # Demo API RED Dashboard
 
-Grafana automatically provisions the:
+Grafana automatically provisions:
 
 ```text
 Demo API RED Dashboard
@@ -225,7 +252,7 @@ The dashboard includes:
 
 ![Grafana Demo API RED Dashboard](docs/screenshots/grafana-demo-api-red-dashboard.png)
 
-A deliberate traffic test produced visible:
+A deliberate traffic test generated:
 
 ```text
 normal requests
@@ -233,7 +260,7 @@ slow requests
 HTTP 500 failures
 ```
 
-The validation run demonstrated approximately:
+One validation run showed approximately:
 
 ```text
 Request Rate
@@ -252,9 +279,9 @@ P99 Latency
 2.451 s
 ```
 
-These values are test-specific and will change depending on generated traffic.
+These values are test-specific.
 
-The important result is that intentional `/slow` requests increased latency while `/error` requests were reflected in the HTTP 5xx and route-level error panels.
+The important result is that `/slow` increased latency while `/error` generated visible 5xx traffic and route-level failures.
 
 ---
 
@@ -272,143 +299,8 @@ sum(
 )
 ```
 
-The `/metrics` endpoint is excluded so Prometheus scrape traffic does not distort application traffic.
+The `/metrics` endpoint is excluded so Prometheus scraping does not distort application traffic.
 
-# Application-Level Alerting
-
-The RED metrics are also used for application-level Prometheus alerting.
-
-The project currently includes two application alerts:
-
-```text
-DemoApiHigh5xxErrorRate
-DemoApiHighP95Latency
-```
-
-The rules are stored in:
-
-```text
-prometheus/rules/application.yml
-```
-
----
-
-## High 5xx Error Rate
-
-The `DemoApiHigh5xxErrorRate` alert detects sustained HTTP server errors.
-
-The alert condition is:
-
-```text
-5xx error rate > 10%
-for at least 1 minute
-```
-
-The expression excludes `/metrics` traffic so Prometheus scraping does not distort the application error rate.
-
-```text
-FastAPI failures
-      ↓
-http_requests_total
-      ↓
-Prometheus
-      ↓
-5xx rate > 10%
-      ↓
-PENDING
-      ↓
-FIRING
-      ↓
-Alertmanager
-```
-
----
-
-## High P95 Latency
-
-The `DemoApiHighP95Latency` alert detects sustained application latency.
-
-The alert condition is:
-
-```text
-P95 latency > 1 second
-for at least 1 minute
-```
-
-It uses the high-resolution Prometheus request-duration histogram.
-
-```text
-Slow requests
-      ↓
-Request duration histogram
-      ↓
-P95 calculation
-      ↓
-P95 > 1 second
-      ↓
-PENDING
-      ↓
-FIRING
-      ↓
-Alertmanager
-```
-
----
-
-## Rule Health
-
-Prometheus successfully loaded and evaluated both application rules alongside the existing infrastructure `TargetDown` rule.
-
-![Prometheus Application Rule Health](docs/screenshots/prometheus-application-rule-health.png)
-
-The loaded rules are:
-
-```text
-DemoApiHigh5xxErrorRate
-DemoApiHighP95Latency
-TargetDown
-```
-
----
-
-## Application Alert Validation
-
-Deliberate `/error` and `/slow` traffic was generated for more than one minute.
-
-This caused both application alerts to transition into the firing state.
-
-![Prometheus Application Alerts](docs/screenshots/prometheus-application-alerts.png)
-
-The test demonstrates that the RED metrics are not only visualized in Grafana but can also drive automated operational alerting.
-
----
-
-## Alertmanager Routing
-
-Both firing application alerts were successfully forwarded to Alertmanager.
-
-![Alertmanager Application Alerts](docs/screenshots/alertmanager-application-alerts.png)
-
-Alertmanager received:
-
-```text
-DemoApiHigh5xxErrorRate
-DemoApiHighP95Latency
-```
-
-The complete application alert path is therefore:
-
-```text
-Application behaviour
-        ↓
-Prometheus metrics
-        ↓
-RED alert expression
-        ↓
-Prometheus alert
-        ↓
-Alertmanager
-```
 ---
 
 ## HTTP 5xx Error Rate
@@ -483,6 +375,362 @@ histogram_quantile(
 
 ---
 
+# Application-Level Alerting
+
+The RED metrics are also used for application-level Prometheus alerts.
+
+The rules are stored in:
+
+```text
+prometheus/rules/application.yml
+```
+
+The current application alerts are:
+
+```text
+DemoApiHigh5xxErrorRate
+DemoApiHighP95Latency
+```
+
+---
+
+## High 5xx Error Rate
+
+The `DemoApiHigh5xxErrorRate` alert detects sustained HTTP server errors.
+
+Condition:
+
+```text
+5xx error rate > 10%
+for at least 1 minute
+```
+
+The alert flow is:
+
+```text
+FastAPI failures
+      ↓
+http_requests_total
+      ↓
+Prometheus
+      ↓
+5xx rate > 10%
+      ↓
+PENDING
+      ↓
+FIRING
+      ↓
+Alertmanager
+```
+
+---
+
+## High P95 Latency
+
+The `DemoApiHighP95Latency` alert detects sustained application latency.
+
+Condition:
+
+```text
+P95 latency > 1 second
+for at least 1 minute
+```
+
+The alert flow is:
+
+```text
+Slow requests
+      ↓
+Request duration histogram
+      ↓
+P95 calculation
+      ↓
+P95 > 1 second
+      ↓
+PENDING
+      ↓
+FIRING
+      ↓
+Alertmanager
+```
+
+---
+
+## Rule Health
+
+Prometheus successfully loads the application alert rules alongside the infrastructure rule.
+
+![Prometheus Application Rule Health](docs/screenshots/prometheus-application-rule-health.png)
+
+The active rules include:
+
+```text
+DemoApiHigh5xxErrorRate
+DemoApiHighP95Latency
+TargetDown
+```
+
+---
+
+## Application Alert Validation
+
+Deliberate `/error` and `/slow` traffic was generated for more than one minute.
+
+Both application alerts reached the firing state.
+
+![Prometheus Application Alerts](docs/screenshots/prometheus-application-alerts.png)
+
+This confirms that the RED metrics can drive operational alerting rather than only dashboard visualization.
+
+---
+
+## Alertmanager Routing
+
+Both application alerts were successfully forwarded to Alertmanager.
+
+![Alertmanager Application Alerts](docs/screenshots/alertmanager-application-alerts.png)
+
+Alertmanager received:
+
+```text
+DemoApiHigh5xxErrorRate
+DemoApiHighP95Latency
+```
+
+The complete path is:
+
+```text
+Application behaviour
+        ↓
+Prometheus metrics
+        ↓
+Alert expression
+        ↓
+Prometheus alert
+        ↓
+Alertmanager
+```
+
+---
+
+# SLI, SLO and Error Budget Monitoring
+
+The project builds Service Level Indicators and Service Level Objectives on top of the existing application metrics.
+
+The current lab objectives are:
+
+```text
+Availability SLO
+99% successful requests
+
+Latency SLO
+95% of requests complete within 1 second
+```
+
+The recording rules are stored in:
+
+```text
+prometheus/rules/slo.yml
+```
+
+These use a short five-minute window to make SLO behaviour easy to test locally.
+
+A production SLO would normally use a significantly longer rolling measurement period.
+
+---
+
+# Availability SLI
+
+The availability SLI measures the proportion of requests that do not return a 5xx response.
+
+```text
+Successful non-5xx requests
+          /
+All application requests
+```
+
+Prometheus records:
+
+```text
+demo_api:sli_availability_ratio:5m
+```
+
+The `/metrics` endpoint is excluded from the calculation.
+
+---
+
+# Latency SLI
+
+The latency SLI measures the proportion of application requests completed within one second.
+
+```text
+Requests completed within 1 second
+                /
+Total application requests
+```
+
+Prometheus records:
+
+```text
+demo_api:sli_latency_under_1s_ratio:5m
+```
+
+---
+
+# SLO Targets
+
+The lab defines:
+
+```text
+Availability SLO = 99%
+Latency SLO      = 95%
+```
+
+These are exposed as recording rules:
+
+```text
+demo_api:slo_availability_target
+demo_api:slo_latency_target
+```
+
+---
+
+# Error Budgets
+
+An SLO deliberately allows a limited amount of failure.
+
+For the availability objective:
+
+```text
+99% SLO
+→ 1% failure budget
+```
+
+For the latency objective:
+
+```text
+95% SLO
+→ 5% slow-request budget
+```
+
+The remaining error budget is calculated from the measured SLI.
+
+```text
+SLI
+ ↓
+SLO target
+ ↓
+Allowed failure
+ ↓
+Error budget remaining
+```
+
+Prometheus records:
+
+```text
+demo_api:error_budget_availability_remaining:5m
+demo_api:error_budget_latency_remaining:5m
+```
+
+The values are constrained between:
+
+```text
+0% and 100%
+```
+
+---
+
+# No-Traffic Handling
+
+The SLI rules only calculate a value when real application traffic exists.
+
+```text
+No application traffic
+        ↓
+No new SLI sample
+```
+
+This prevents an idle application from being incorrectly represented as:
+
+```text
+0% availability
+```
+
+No traffic and failed traffic are therefore treated as different operational conditions.
+
+---
+
+# SLI/SLO Recording Rule Health
+
+Prometheus successfully loads all six SLI/SLO recording rules.
+
+![Prometheus SLI SLO Rule Health](docs/screenshots/prometheus-sli-slo-rule-health.png)
+
+The rule group contains:
+
+```text
+Availability SLI
+Latency SLI
+Availability SLO target
+Latency SLO target
+Availability error budget remaining
+Latency error budget remaining
+```
+
+---
+
+# SLO and Error Budget Dashboard
+
+Grafana automatically provisions:
+
+```text
+Demo API SLO & Error Budget
+```
+
+from:
+
+```text
+grafana/dashboards/demo-api-slo.json
+```
+
+The dashboard displays:
+
+```text
+Availability SLI
+Availability SLO
+Availability Error Budget Remaining
+
+Latency SLI
+Latency SLO
+Latency Error Budget Remaining
+
+Availability SLI vs SLO
+Latency SLI vs SLO
+Error Budget Remaining
+```
+
+![Grafana SLO Error Budget](docs/screenshots/grafana-slo-error-budget.png)
+
+During deliberate failure testing, one short test window produced:
+
+```text
+Availability SLI = 50%
+Availability SLO = 99%
+
+Latency SLI      = 50%
+Latency SLO      = 95%
+```
+
+Both error budgets reached:
+
+```text
+0%
+```
+
+This shows that the generated failure and latency traffic exceeded the amount permitted by the defined objectives.
+
+---
+
 # Observability Signals
 
 ## Application Metrics
@@ -497,6 +745,8 @@ Prometheus
 Grafana
    ↓
 RED Dashboard
+   ↓
+SLIs / SLOs
 ```
 
 ---
@@ -532,7 +782,7 @@ Example:
 }
 ```
 
-The pipeline is:
+The log pipeline is:
 
 ```text
 FastAPI
@@ -582,9 +832,23 @@ Duration
 
 ![Grafana Demo API RED Dashboard](docs/screenshots/grafana-demo-api-red-dashboard.png)
 
-The `/slow` endpoint produces visible high-latency behaviour.
+---
 
-The `/error` endpoint produces visible 5xx traffic and a 100% route-specific failure rate when only failing requests are sent to that route.
+## SLO Dashboard
+
+The SLO dashboard converts RED metrics into reliability objectives.
+
+```text
+Application metrics
+       ↓
+SLIs
+       ↓
+SLO targets
+       ↓
+Error budget
+```
+
+![Grafana SLO Error Budget](docs/screenshots/grafana-slo-error-budget.png)
 
 ---
 
@@ -606,13 +870,13 @@ GET /work
 
 ![Grafana Tempo work trace](docs/screenshots/grafana-tempo-work-trace.png)
 
-This demonstrates both automatic FastAPI instrumentation and custom application spans.
+This demonstrates automatic HTTP instrumentation and custom application spans.
 
 ---
 
 ## Error Trace
 
-The application includes an intentional failure endpoint:
+The application contains an intentional failure endpoint:
 
 ```text
 GET /error
@@ -650,7 +914,7 @@ error_type
 
 ![Grafana Loki structured logs](docs/screenshots/grafana-loki-structured-logs.png)
 
-The test workload generated:
+The test workload generates:
 
 ```text
 INFO
@@ -664,14 +928,14 @@ events.
 
 ## Log-to-Trace Correlation
 
-Each application log includes:
+Each application log contains:
 
 ```text
 trace_id
 span_id
 ```
 
-Grafana uses `trace_id` as a derived field.
+Grafana uses the trace ID as a derived field.
 
 ```text
 Loki log
@@ -687,15 +951,13 @@ Matching application trace
 
 ![Grafana Loki trace correlation](docs/screenshots/grafana-loki-trace-correlation.png)
 
-This allows an operator to move directly from an application log to the trace for the same request.
-
 ---
 
 ## Infrastructure Dashboard
 
-Grafana also provisions the Node Exporter dashboard.
+Grafana also provisions the Node Exporter infrastructure dashboard.
 
-It provides visibility into:
+It provides:
 
 - CPU usage
 - memory usage
@@ -720,7 +982,7 @@ demo-api
 
 ---
 
-## Failure and Recovery
+## Infrastructure Failure and Recovery
 
 The Prometheus:
 
@@ -746,7 +1008,7 @@ UP = 1
 
 ---
 
-## Prometheus Alert
+## Infrastructure Alert
 
 The project includes a:
 
@@ -757,12 +1019,6 @@ TargetDown
 alert.
 
 It fires when a monitored target remains unavailable for one minute.
-
-```text
-alertname="TargetDown"
-severity="warning"
-state="FIRING"
-```
 
 ![Prometheus TargetDown Alert](docs/screenshots/prometheus-alert-firing.png)
 
@@ -777,7 +1033,7 @@ Target failure
       ↓
 Prometheus
       ↓
-TargetDown
+Alert rule
       ↓
 Alertmanager
 ```
@@ -841,9 +1097,9 @@ WARNING log
 high latency metric
 +
 Tempo trace
++
+latency SLI impact
 ```
-
-This behaviour is visible directly in the RED dashboard.
 
 ---
 
@@ -863,9 +1119,9 @@ ERROR log
 5xx metric
 +
 Tempo trace
++
+availability SLI impact
 ```
-
-The RED dashboard reflects the resulting application error rate.
 
 ---
 
@@ -883,20 +1139,26 @@ The RED dashboard reflects the resulting application error rate.
 │
 ├── docs/
 │   └── screenshots/
+│       ├── alertmanager-application-alerts.png
 │       ├── alertmanager-target-down.png
 │       ├── grafana-demo-api-red-dashboard.png
 │       ├── grafana-loki-structured-logs.png
 │       ├── grafana-loki-trace-correlation.png
 │       ├── grafana-node-exporter-dashboard.png
+│       ├── grafana-slo-error-budget.png
 │       ├── grafana-target-health-query.png
 │       ├── grafana-tempo-error-trace.png
 │       ├── grafana-tempo-work-trace.png
 │       ├── prometheus-alert-firing.png
+│       ├── prometheus-application-alerts.png
+│       ├── prometheus-application-rule-health.png
+│       ├── prometheus-sli-slo-rule-health.png
 │       └── prometheus-targets.png
 │
 ├── grafana/
 │   ├── dashboards/
 │   │   ├── demo-api-red.json
+│   │   ├── demo-api-slo.json
 │   │   └── node-exporter.json
 │   │
 │   └── provisioning/
@@ -917,6 +1179,8 @@ The RED dashboard reflects the resulting application error rate.
 ├── prometheus/
 │   ├── prometheus.yml
 │   └── rules/
+│       ├── application.yml
+│       ├── slo.yml
 │       └── targets.yml
 │
 ├── tempo/
@@ -954,7 +1218,13 @@ Infrastructure metrics
 Target health
 ```
 
-It also provides the data used by the RED dashboard.
+It also evaluates:
+
+```text
+Infrastructure alert rules
+Application alert rules
+SLI/SLO recording rules
+```
 
 ---
 
@@ -964,26 +1234,27 @@ Grafana provides one interface for:
 
 ```text
 Infrastructure dashboards
-Application RED monitoring
+RED application monitoring
+SLO monitoring
 Logs
 Traces
 ```
 
-All dashboards and data sources are provisioned from version-controlled files.
+Dashboards and data sources are provisioned from Git.
 
 ---
 
 ## OpenTelemetry
 
-OpenTelemetry provides application tracing and context propagation.
+OpenTelemetry provides tracing and context propagation.
 
-Trace IDs are also recorded in application logs.
+Trace IDs are also written into structured logs.
 
 ---
 
 ## OpenTelemetry Collector
 
-The Collector handles:
+The Collector currently handles:
 
 ```text
 Traces
@@ -1023,7 +1294,7 @@ It supports:
 - trace search
 - span inspection
 - latency investigation
-- error investigation
+- failure investigation
 
 ---
 
@@ -1034,16 +1305,16 @@ Loki stores structured application logs.
 It supports:
 
 - log search
-- JSON field parsing
-- log-level investigation
-- error analysis
-- trace correlation
+- JSON parsing
+- log-level analysis
+- error investigation
+- log-to-trace correlation
 
 ---
 
 ## Node Exporter
 
-Node Exporter provides host-level:
+Node Exporter provides:
 
 - CPU metrics
 - memory metrics
@@ -1056,7 +1327,7 @@ Node Exporter provides host-level:
 
 Alertmanager receives alerts generated by Prometheus.
 
-The current project uses a local receiver.
+The current environment uses a local receiver.
 
 ---
 
@@ -1138,6 +1409,7 @@ tempo
 | Grafana | `http://127.0.0.1:3000` |
 | Prometheus | `http://127.0.0.1:9090` |
 | Prometheus targets | `http://127.0.0.1:9090/targets` |
+| Prometheus rules | `http://127.0.0.1:9090/rules` |
 | Prometheus alerts | `http://127.0.0.1:9090/alerts` |
 | Alertmanager | `http://127.0.0.1:9093` |
 | Loki | `http://127.0.0.1:3100` |
@@ -1163,7 +1435,7 @@ for i in {1..5}; do
 done
 ```
 
-Generate errors:
+Generate failures:
 
 ```bash
 for i in {1..5}; do
@@ -1171,29 +1443,37 @@ for i in {1..5}; do
 done
 ```
 
-This creates enough traffic to demonstrate the RED dashboard.
-
 ---
 
 # View the RED Dashboard
 
-Open:
+Navigate to:
 
 ```text
-http://127.0.0.1:3000
+Grafana
+  ↓
+Dashboards
+  ↓
+Infrastructure
+  ↓
+Demo API RED Dashboard
 ```
+
+---
+
+# View the SLO Dashboard
 
 Navigate to:
 
 ```text
+Grafana
+  ↓
 Dashboards
-   ↓
+  ↓
 Infrastructure
-   ↓
-Demo API RED Dashboard
+  ↓
+Demo API SLO & Error Budget
 ```
-
-The dashboard should react to generated application traffic.
 
 ---
 
@@ -1219,7 +1499,7 @@ Run:
 
 # Log-to-Trace Correlation
 
-Expand a Loki log record.
+Expand a Loki log entry.
 
 Grafana exposes:
 
@@ -1234,7 +1514,7 @@ Click:
 View Trace
 ```
 
-to open the matching trace in Tempo.
+to open the matching Tempo trace.
 
 ---
 
@@ -1257,7 +1537,7 @@ Service Name = demo-api
 Span Name = GET /work
 ```
 
-The trace should contain:
+Expected trace structure:
 
 ```text
 GET /work
@@ -1269,13 +1549,17 @@ GET /work
 
 # Alert Testing
 
-Stop Node Exporter:
+Generate sustained errors and latency:
 
 ```bash
-docker compose stop node-exporter
+for i in {1..35}; do
+  curl -s http://127.0.0.1:8000/error > /dev/null
+  curl -s http://127.0.0.1:8000/slow > /dev/null
+  sleep 1
+done
 ```
 
-The `TargetDown` alert should move through:
+Prometheus application alerts should move through:
 
 ```text
 INACTIVE
@@ -1285,10 +1569,11 @@ PENDING
 FIRING
 ```
 
-Restore the service:
+Alertmanager should then receive:
 
-```bash
-docker compose start node-exporter
+```text
+DemoApiHigh5xxErrorRate
+DemoApiHighP95Latency
 ```
 
 ---
@@ -1317,7 +1602,7 @@ docker compose run --rm --no-deps \
   check-config /etc/alertmanager/alertmanager.yml
 ```
 
-Validate the infrastructure dashboard:
+Validate infrastructure dashboard JSON:
 
 ```bash
 python3 -m json.tool \
@@ -1325,7 +1610,7 @@ python3 -m json.tool \
   > /dev/null
 ```
 
-Validate the RED dashboard:
+Validate RED dashboard JSON:
 
 ```bash
 python3 -m json.tool \
@@ -1333,18 +1618,26 @@ python3 -m json.tool \
   > /dev/null
 ```
 
+Validate SLO dashboard JSON:
+
+```bash
+python3 -m json.tool \
+  grafana/dashboards/demo-api-slo.json \
+  > /dev/null
+```
+
 ---
 
 # Failure Testing
 
-The project intentionally generates failure scenarios.
+The project deliberately creates abnormal behaviour so observability features can be validated.
 
 ## Infrastructure Failure
 
 ```text
 Stop Node Exporter
       ↓
-Prometheus detects target failure
+Prometheus target DOWN
       ↓
 TargetDown alert
       ↓
@@ -1358,17 +1651,21 @@ GET /error
       ↓
 HTTP 500
       ↓
-Prometheus 5xx metric
+5xx metric
       ↓
 RED error panel
       ↓
-ERROR structured log
+ERROR log
       ↓
 Loki
       ↓
 Trace ID
       ↓
 Tempo
+      ↓
+Availability SLI impact
+      ↓
+Error budget consumption
 ```
 
 ## Application Latency
@@ -1378,26 +1675,28 @@ GET /slow
       ↓
 ~2 second response
       ↓
-Prometheus histogram
+Latency histogram
       ↓
-P95/P99 increase
+P95 / P99 increase
       ↓
 WARNING log
       ↓
 Tempo trace
+      ↓
+Latency SLI impact
+      ↓
+Error budget consumption
 ```
-
-This allows the same failure to be investigated through multiple observability signals.
 
 ---
 
 # Engineering Lessons
 
-## RED Turns Raw Metrics into an Operational View
+## RED Turns Raw Metrics into Operational Signals
 
-Prometheus exposes many individual metrics.
+Prometheus exposes many metrics.
 
-The RED method reduces those metrics to three application questions:
+The RED method simplifies application monitoring into:
 
 ```text
 Rate
@@ -1405,110 +1704,110 @@ Errors
 Duration
 ```
 
-This makes the dashboard useful for operational investigation rather than simply displaying every available metric.
-
 ---
 
-## Synthetic Failure Makes Dashboards Easier to Validate
+## Alerts Should Be Built from Meaningful Service Signals
 
-The `/slow` and `/error` endpoints make it possible to verify that monitoring reacts as expected.
-
-Without intentional abnormal traffic, a dashboard can look healthy without proving that it detects useful conditions.
-
----
-
-## Percentiles Show Different Behaviour Than Averages
-
-An average latency value can hide a small number of slow requests.
-
-P50, P95, and P99 provide different views of the request distribution.
-
-The deliberate `/slow` traffic caused the higher percentiles to increase significantly while P50 remained much lower.
-
----
-
-## Monitoring Traffic Should Not Distort Application Traffic
-
-Prometheus repeatedly requests:
+The application alerts are based on:
 
 ```text
-/metrics
+5xx error rate
+P95 latency
 ```
 
-The RED request-rate queries therefore exclude:
-
-```text
-handler="/metrics"
-```
-
-so monitoring traffic does not become part of the application traffic signal.
+rather than individual container events.
 
 ---
 
-# Troubleshooting Lessons
+## SLIs Convert Metrics into Reliability Measurements
 
-## Dockerfile Parsing
+An individual metric does not define reliability.
 
-The first FastAPI image build failed because the JSON `CMD` syntax was split incorrectly.
-
-The corrected form is:
-
-```dockerfile
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
-```
+The SLI converts raw Prometheus data into ratios that can be compared with explicit objectives.
 
 ---
 
-## Tempo Configuration
+## SLOs Need an Error Budget
 
-The first Tempo configuration used settings that were not accepted by the current Tempo image.
+A 99% availability objective does not mean zero failures.
 
-The configuration was simplified for a local single-binary deployment.
+It means:
+
+```text
+1% failure is permitted
+```
+
+The error budget makes that allowance measurable.
 
 ---
 
-## Grafana Provisioning
+## No Traffic Is Not Failure
 
-Grafana loads dashboards and data sources from:
-
-```text
-grafana/provisioning/
-```
-
-The application RED dashboard is automatically loaded because the existing dashboard provider reads:
+An idle application should not automatically produce:
 
 ```text
-grafana/dashboards/
+0% availability
 ```
 
-This keeps dashboard configuration in Git rather than relying on manual UI configuration.
+The SLI rules therefore produce values only when application traffic exists.
+
+---
+
+## Synthetic Failure Makes Monitoring Testable
+
+The `/slow` and `/error` routes make it possible to validate:
+
+```text
+dashboards
+alerts
+logs
+traces
+SLIs
+SLOs
+error budgets
+```
+
+using controlled application behaviour.
 
 ---
 
 # Current Coverage
 
 ```text
-Infrastructure metrics        ✓
-Application metrics           ✓
-RED monitoring                ✓
-Request rate                  ✓
-HTTP error rate               ✓
-P50 latency                   ✓
-P95 latency                   ✓
-P99 latency                   ✓
-Route-level metrics           ✓
-Distributed tracing           ✓
-Custom spans                  ✓
-Structured logging            ✓
-Centralized logging           ✓
-Log parsing                   ✓
-Log-to-trace correlation      ✓
-Latency investigation         ✓
-Failure investigation         ✓
-Prometheus alerts             ✓
-Alertmanager routing          ✓
-Failure/recovery testing      ✓
-Grafana provisioning          ✓
+Infrastructure metrics          ✓
+Application metrics             ✓
+RED monitoring                  ✓
+Request rate                    ✓
+HTTP error rate                 ✓
+P50 latency                     ✓
+P95 latency                     ✓
+P99 latency                     ✓
+Route-level metrics             ✓
+
+Distributed tracing             ✓
+Custom spans                    ✓
+Failure tracing                 ✓
+Latency tracing                 ✓
+
+Structured logging              ✓
+Centralized logging             ✓
+Log parsing                     ✓
+Log-to-trace correlation        ✓
+
+Infrastructure alerting         ✓
+Application alerting            ✓
+Alertmanager routing            ✓
+
+Availability SLI                ✓
+Latency SLI                     ✓
+Availability SLO                ✓
+Latency SLO                     ✓
+Error budget calculation        ✓
+No-traffic SLI handling         ✓
+SLO dashboard                   ✓
+
+Grafana provisioning            ✓
+Failure/recovery testing        ✓
 ```
 
 ---
@@ -1519,14 +1818,14 @@ This is intentionally a local observability engineering lab.
 
 Current limitations include:
 
-- single application service
+- single demo application service
+- five-minute SLI/SLO lab windows
 - local Loki storage
 - local Tempo storage
 - no production object storage
 - no high availability
-- no application-level alert rules yet
-- no SLOs or error budgets yet
-- no external alert notification receiver
+- no burn-rate alerting yet
+- no external Alertmanager notification receiver
 - no authentication on local monitoring interfaces
 - no Kubernetes deployment
 - no production retention strategy
@@ -1535,30 +1834,26 @@ Current limitations include:
 
 # Next Phase
 
-The next phase will introduce **Service Level Indicators and Service Level Objectives**.
+The next phase will focus on **CI validation with GitHub Actions**.
 
-The progression is now:
-
-```text
-RED dashboard
-     ↓
-Application alerts
-     ↓
-SLIs
-     ↓
-SLOs
-     ↓
-Error budget
-```
-
-Initial SLI/SLO work will focus on:
+The goal is to automatically validate observability configuration on every pull request.
 
 ```text
-Availability
-Successful request ratio
-Latency
-Error budget
+Pull Request
+     ↓
+Docker Compose validation
+     ↓
+Prometheus configuration validation
+     ↓
+Prometheus rule validation
+     ↓
+Alertmanager validation
+     ↓
+Grafana dashboard JSON validation
 ```
+
+This will move configuration validation from a manual local workflow into CI.
+
 ---
 
 # Roadmap
@@ -1571,29 +1866,45 @@ Error budget
 [Complete] Target health monitoring
 [Complete] Prometheus infrastructure alerts
 [Complete] Alertmanager
+
 [Complete] FastAPI workload
+[Complete] Application metrics
+[Complete] RED dashboard
+[Complete] Request-rate monitoring
+[Complete] Error-rate monitoring
+[Complete] P50/P95/P99 monitoring
+[Complete] Route-level monitoring
+
 [Complete] OpenTelemetry tracing
 [Complete] OpenTelemetry Collector
 [Complete] Grafana Tempo
 [Complete] Custom spans
-[Complete] Slow request tracing
 [Complete] Failure tracing
+[Complete] Slow-request tracing
+
 [Complete] Structured JSON logging
 [Complete] Grafana Loki
 [Complete] Log parsing
 [Complete] Log-to-trace correlation
-[Complete] RED application dashboard
-[Complete] Request rate monitoring
-[Complete] HTTP error-rate monitoring
-[Complete] P50/P95/P99 latency monitoring
-[Complete] Route-level application monitoring
-[Complete] Application-level Prometheus alerts
 
-[Next] SLIs
-[Next] SLOs
-[Next] Error budgets
+[Complete] Application-level Prometheus alerts
+[Complete] High 5xx error-rate alert
+[Complete] High P95 latency alert
+[Complete] Application alert routing
+
+[Complete] Availability SLI
+[Complete] Latency SLI
+[Complete] Availability SLO
+[Complete] Latency SLO
+[Complete] Error budget monitoring
+[Complete] No-traffic SLI handling
+[Complete] SLO Grafana dashboard
+
 [Next] GitHub Actions validation
 [Next] External Alertmanager notifications
+
+[Future] Burn-rate alerting
+[Future] Longer-window production-style SLOs
 [Future] Kubernetes deployment
 ```
 
@@ -1646,6 +1957,14 @@ Grafana
 ```text
 Prometheus Rules
 Alertmanager
+```
+
+## Reliability
+
+```text
+SLIs
+SLOs
+Error Budgets
 ```
 
 ## Platform
