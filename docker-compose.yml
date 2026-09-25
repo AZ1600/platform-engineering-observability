@@ -48,20 +48,23 @@ services:
 
 
   alertmanager:
-    image: prom/alertmanager
-    container_name: alertmanager
-    restart: unless-stopped
+      image: prom/alertmanager
+      container_name: alertmanager
+      restart: unless-stopped
 
-    ports:
-      - "127.0.0.1:9093:9093"
+      ports:
+        - "127.0.0.1:9093:9093"
 
-    command:
-      - "--config.file=/etc/alertmanager/alertmanager.yml"
-      - "--storage.path=/alertmanager"
+      command:
+        - "--config.file=/etc/alertmanager/alertmanager.yml"
+        - "--storage.path=/alertmanager"
 
-    volumes:
-      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
-      - alertmanager_data:/alertmanager
+      volumes:
+        - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+        - alertmanager_data:/alertmanager
+
+      secrets:
+        - slack_webhook_url
 
 
   tempo:
@@ -140,3 +143,7 @@ volumes:
   alertmanager_data:
   tempo_data:
   app_logs:
+
+secrets:
+  slack_webhook_url:
+    file: ./.secrets/slack_webhook_url
