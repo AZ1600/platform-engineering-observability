@@ -9,8 +9,12 @@ services:
 
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus_data:/prometheus
       - ./prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+
+    depends_on:
+      - demo-api
+
 
   grafana:
     image: grafana/grafana
@@ -25,6 +29,11 @@ services:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
 
+    depends_on:
+      - prometheus
+      - tempo
+
+
   node-exporter:
     image: prom/node-exporter
     container_name: node-exporter
@@ -35,6 +44,7 @@ services:
 
     volumes:
       - /:/host:ro
+
 
   alertmanager:
     image: prom/alertmanager
@@ -52,7 +62,58 @@ services:
       - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - alertmanager_data:/alertmanager
 
+
+  tempo:
+    image: grafana/tempo
+    container_name: tempo
+    restart: unless-stopped
+
+    command:
+      - "-config.file=/etc/tempo/tempo.yml"
+
+    volumes:
+      - ./tempo/tempo.yml:/etc/tempo/tempo.yml:ro
+      - tempo_data:/var/tempo
+
+    ports:
+      - "127.0.0.1:3200:3200"
+
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib
+    container_name: otel-collector
+    restart: unless-stopped
+
+    command:
+      - "--config=/etc/otelcol-contrib/collector.yml"
+
+    volumes:
+      - ./otel/collector.yml:/etc/otelcol-contrib/collector.yml:ro
+
+    depends_on:
+      - tempo
+
+
+  demo-api:
+    build:
+      context: ./app
+
+    container_name: demo-api
+    restart: unless-stopped
+
+    environment:
+      OTEL_SERVICE_NAME: demo-api
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+
+    ports:
+      - "127.0.0.1:8000:8000"
+
+    depends_on:
+      - otel-collector
+
+
 volumes:
   prometheus_data:
   grafana_data:
   alertmanager_data:
+  tempo_data:
