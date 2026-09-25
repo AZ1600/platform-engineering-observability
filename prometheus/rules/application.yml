@@ -1,0 +1,64 @@
+groups:
+  - name: demo-api-application
+    rules:
+      - alert: DemoApiHigh5xxErrorRate
+        expr: |
+          (
+            100 *
+            sum(
+              rate(
+                http_requests_total{
+                  job="demo-api",
+                  handler!="/metrics",
+                  status=~"5.."
+                }[5m]
+              )
+            )
+            /
+            clamp_min(
+              sum(
+                rate(
+                  http_requests_total{
+                    job="demo-api",
+                    handler!="/metrics"
+                  }[5m]
+                )
+              ),
+              0.000001
+            )
+          ) > 10
+
+        for: 1m
+
+        labels:
+          severity: critical
+          service: demo-api
+          signal: errors
+
+        annotations:
+          summary: "Demo API 5xx error rate is high"
+          description: "The demo-api HTTP 5xx error rate has remained above 10% for at least one minute."
+
+      - alert: DemoApiHighP95Latency
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(
+              rate(
+                http_request_duration_highr_seconds_bucket{
+                  job="demo-api"
+                }[5m]
+              )
+            ) by (le)
+          ) > 1
+
+        for: 1m
+
+        labels:
+          severity: warning
+          service: demo-api
+          signal: latency
+
+        annotations:
+          summary: "Demo API P95 latency is high"
+          description: "The demo-api P95 request latency has remained above 1 second for at least one minute."
