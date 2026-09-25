@@ -1,0 +1,228 @@
+groups:
+  - name: demo-api-burn-rate
+    interval: 15s
+    rules:
+      # Availability burn rate
+      #
+      # Availability SLO = 99%
+      # Allowed failure ratio = 1%
+      #
+      # burn rate = observed failure ratio / allowed failure ratio
+
+      - record: demo_api:availability_burn_rate:1m
+        expr: |
+          (
+            1 -
+            (
+              sum(
+                rate(
+                  http_requests_total{
+                    job="demo-api",
+                    handler!="/metrics",
+                    status!~"5.."
+                  }[1m]
+                )
+              )
+              /
+              sum(
+                rate(
+                  http_requests_total{
+                    job="demo-api",
+                    handler!="/metrics"
+                  }[1m]
+                )
+              )
+            )
+          )
+          / 0.01
+
+      - record: demo_api:availability_burn_rate:5m
+        expr: |
+          (
+            1 -
+            demo_api:sli_availability_ratio:5m
+          )
+          / 0.01
+
+      - record: demo_api:availability_burn_rate:15m
+        expr: |
+          (
+            1 -
+            (
+              sum(
+                rate(
+                  http_requests_total{
+                    job="demo-api",
+                    handler!="/metrics",
+                    status!~"5.."
+                  }[15m]
+                )
+              )
+              /
+              sum(
+                rate(
+                  http_requests_total{
+                    job="demo-api",
+                    handler!="/metrics"
+                  }[15m]
+                )
+              )
+            )
+          )
+          / 0.01
+
+
+      # Latency burn rate
+      #
+      # Latency SLO = 95%
+      # Allowed slow-request ratio = 5%
+
+      - record: demo_api:latency_burn_rate:1m
+        expr: |
+          (
+            1 -
+            (
+              sum(
+                rate(
+                  http_request_duration_seconds_bucket{
+                    job="demo-api",
+                    handler!="/metrics",
+                    le="1.0"
+                  }[1m]
+                )
+              )
+              /
+              sum(
+                rate(
+                  http_request_duration_seconds_count{
+                    job="demo-api",
+                    handler!="/metrics"
+                  }[1m]
+                )
+              )
+            )
+          )
+          / 0.05
+
+      - record: demo_api:latency_burn_rate:5m
+        expr: |
+          (
+            1 -
+            demo_api:sli_latency_under_1s_ratio:5m
+          )
+          / 0.05
+
+      - record: demo_api:latency_burn_rate:15m
+        expr: |
+          (
+            1 -
+            (
+              sum(
+                rate(
+                  http_request_duration_seconds_bucket{
+                    job="demo-api",
+                    handler!="/metrics",
+                    le="1.0"
+                  }[15m]
+                )
+              )
+              /
+              sum(
+                rate(
+                  http_request_duration_seconds_count{
+                    job="demo-api",
+                    handler!="/metrics"
+                  }[15m]
+                )
+              )
+            )
+          )
+          / 0.05
+
+
+      # Fast-burn alerts
+      #
+      # Requires both the 1-minute and 5-minute signals
+      # to exceed 4x the sustainable error-budget burn rate.
+
+      - alert: DemoApiAvailabilityFastBurn
+        expr: |
+          (
+            demo_api:availability_burn_rate:1m > 4
+          )
+          and
+          (
+            demo_api:availability_burn_rate:5m > 4
+          )
+        for: 1m
+        labels:
+          severity: critical
+          service: demo-api
+          signal: availability
+          slo: availability
+        annotations:
+          summary: "Demo API availability error budget is burning quickly"
+          description: "Availability error budget consumption has exceeded 4x the sustainable burn rate."
+
+      - alert: DemoApiLatencyFastBurn
+        expr: |
+          (
+            demo_api:latency_burn_rate:1m > 4
+          )
+          and
+          (
+            demo_api:latency_burn_rate:5m > 4
+          )
+        for: 1m
+        labels:
+          severity: critical
+          service: demo-api
+          signal: latency
+          slo: latency
+        annotations:
+          summary: "Demo API latency error budget is burning quickly"
+          description: "Latency error budget consumption has exceeded 4x the sustainable burn rate."
+
+
+      # Slow-burn alerts
+      #
+      # Detects a lower but sustained burn using the
+      # 5-minute and 15-minute signals.
+
+      - alert: DemoApiAvailabilitySlowBurn
+        expr: |
+          (
+            demo_api:availability_burn_rate:5m > 1
+          )
+          and
+          (
+            demo_api:availability_burn_rate:15m > 1
+          )
+        for: 2m
+        labels:
+          severity: warning
+          service: demo-api
+          signal: availability
+          slo: availability
+        annotations:
+          summary: "Demo API availability error budget is being consumed"
+          description: "Availability error budget consumption has remained above the sustainable burn rate."
+
+      - alert: DemoApiLatencySlowBurn
+        expr: |
+          (
+            demo_api:latency_burn_rate:5m > 1
+          )
+          and
+          (
+            demo_api:latency_burn_rate:15m > 1
+          )
+        for: 2m
+        labels:
+          severity: warning
+          service: demo-api
+          signal: latency
+          slo: latency
+        annotations:
+          summary: "Demo API latency error budget is being consumed"
+          description: "Latency error budget consumption has remained above the sustainable burn rate."
