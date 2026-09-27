@@ -4,7 +4,7 @@
 
 A reproducible observability engineering lab built with **Prometheus, Grafana, OpenTelemetry, Loki, Tempo, Alertmanager, FastAPI, Docker, and Docker Compose**.
 
-The project demonstrates the complete operational path from application telemetry to dashboards, distributed tracing, centralized logging, alerting, SLO monitoring, CI validation, and external Slack notifications.
+The project demonstrates the complete operational path from application telemetry to dashboards, distributed tracing, centralized logging, alerting, SLO monitoring, error-budget burn-rate detection, CI validation, and external Slack notifications.
 
 ```text
 Application
@@ -15,7 +15,7 @@ Prometheus + OpenTelemetry
     ↓
 Grafana + Loki + Tempo
     ↓
-Alerts + SLOs + Error Budgets
+Alerts + SLOs + Error Budgets + Burn Rates
     ↓
 Alertmanager
     ↓
@@ -46,6 +46,8 @@ The lab currently includes:
 - availability and latency SLIs
 - availability and latency SLOs
 - error budget monitoring
+- multi-window burn-rate monitoring
+- fast-burn and slow-burn alerting
 - Grafana dashboard provisioning
 - GitHub Actions configuration validation
 - controlled latency and failure testing
@@ -110,6 +112,7 @@ Alerting
 SLIs
 SLOs
 Error Budgets
+Burn Rates
 External Notifications
 ```
 
@@ -333,7 +336,7 @@ Alertmanager
 
 # Slack Alert Notifications
 
-Alertmanager now routes warning and critical alerts to Slack.
+Alertmanager routes warning and critical alerts to Slack.
 
 ```text
 Prometheus
@@ -347,7 +350,7 @@ Slack
 
 The Slack integration was validated with a real application failure.
 
-The notification showed both:
+The notification demonstrated both:
 
 ```text
 FIRING
@@ -490,6 +493,9 @@ Values are constrained between:
 ```text
 0% and 100%
 ```
+
+---
+
 # SLO Burn-Rate Alerting
 
 The project also monitors how quickly the service consumes its available error budget.
@@ -513,8 +519,6 @@ A burn rate of:
 means the service is consuming its error budget at exactly the sustainable rate.
 
 Higher values indicate increasingly rapid budget consumption.
-
----
 
 ## Availability Burn Rate
 
@@ -540,8 +544,6 @@ For example:
 50x burn rate
 ```
 
----
-
 ## Latency Burn Rate
 
 The latency SLO requires:
@@ -566,8 +568,6 @@ For example:
 10x burn rate
 ```
 
----
-
 ## Multi-Window Detection
 
 Prometheus records burn rate over multiple windows:
@@ -586,7 +586,7 @@ prometheus/rules/burn-rate.yml
 
 ### Fast Burn
 
-Fast-burn alerts require both the short windows to exceed:
+Fast-burn alerts require both short windows to exceed:
 
 ```text
 4x
@@ -636,8 +636,6 @@ DemoApiAvailabilitySlowBurn
 DemoApiLatencySlowBurn
 ```
 
----
-
 ## Slack Burn-Rate Notifications
 
 Burn-rate alerts use the existing Alertmanager-to-Slack notification pipeline.
@@ -658,16 +656,16 @@ Alertmanager
 Slack
 ```
 
-The validation test produced both fast and slow burn alerts.
+Validation produced both fast-burn and slow-burn alerts.
 
-Fast-burn alerts reached:
+Fast-burn alerts demonstrated:
 
 ```text
 FIRING
 RESOLVED
 ```
 
-and the sustained test also caused both slow-burn alerts to reach:
+and sustained degradation caused both slow-burn alerts to reach:
 
 ```text
 FIRING
@@ -675,7 +673,8 @@ FIRING
 
 ![Slack Burn Rate Alerts](docs/screenshots/slack-burn-rate-alerts.png)
 
-This demonstrates that alerting can be based not only on an instantaneous threshold, but also on the rate at which reliability budget is being consumed.
+This demonstrates alerting based not only on instantaneous thresholds, but also on the rate at which reliability budget is being consumed.
+
 ---
 
 # No-Traffic Handling
@@ -755,7 +754,7 @@ Node Exporter provides host-level metrics including:
 
 Prometheus also monitors target health.
 
-The existing infrastructure alert:
+The infrastructure alert:
 
 ```text
 TargetDown
@@ -851,6 +850,7 @@ Python application syntax
 Prometheus configuration
 Prometheus alert rules
 Prometheus SLI/SLO recording rules
+Prometheus burn-rate rules
 Alertmanager configuration
 Grafana dashboard JSON
 ```
@@ -925,6 +925,7 @@ This moves configuration validation out of a purely manual workflow and into ver
 │   ├── prometheus.yml
 │   └── rules/
 │       ├── application.yml
+│       ├── burn-rate.yml
 │       ├── slo.yml
 │       └── targets.yml
 │
@@ -1075,44 +1076,45 @@ done
 # Current Coverage
 
 ```text
-Infrastructure metrics           ✓
-Application metrics              ✓
-RED monitoring                   ✓
-P50/P95/P99 latency              ✓
-Route-level monitoring           ✓
+Infrastructure metrics             ✓
+Application metrics                ✓
+RED monitoring                     ✓
+P50/P95/P99 latency                ✓
+Route-level monitoring             ✓
 
-Distributed tracing              ✓
-Custom spans                     ✓
-Failure tracing                  ✓
-Latency tracing                  ✓
+Distributed tracing                ✓
+Custom spans                       ✓
+Failure tracing                    ✓
+Latency tracing                    ✓
 
-Structured logging               ✓
-Centralized logging              ✓
-Log parsing                      ✓
-Log-to-trace correlation         ✓
+Structured logging                 ✓
+Centralized logging                ✓
+Log parsing                        ✓
+Log-to-trace correlation           ✓
 
-Infrastructure alerting          ✓
-Application alerting             ✓
-Alertmanager routing             ✓
-Slack notifications              ✓
-FIRING notifications             ✓
-RESOLVED notifications           ✓
+Infrastructure alerting            ✓
+Application alerting               ✓
+Alertmanager routing               ✓
+Slack notifications                ✓
+FIRING notifications               ✓
+RESOLVED notifications             ✓
 
-Availability SLI                 ✓
-Latency SLI                      ✓
-Availability SLO                 ✓
-Latency SLO                      ✓
-Error budget calculation         ✓
-No-traffic handling              ✓
-SLO dashboard                    ✓
+Availability SLI                   ✓
+Latency SLI                        ✓
+Availability SLO                   ✓
+Latency SLO                        ✓
+Error budget calculation           ✓
+No-traffic handling                ✓
+SLO dashboard                      ✓
 
-Grafana provisioning             ✓
-GitHub Actions validation        ✓
-Failure/recovery testing         ✓
-Burn-rate recording rules         ✓
+Burn-rate recording rules          ✓
 Fast-burn alerting                 ✓
 Slow-burn alerting                 ✓
 Burn-rate Slack notifications      ✓
+
+Grafana provisioning               ✓
+GitHub Actions validation          ✓
+Failure/recovery testing           ✓
 ```
 
 ---
@@ -1124,45 +1126,33 @@ This is intentionally a local observability engineering lab.
 Current limitations include:
 
 - single demo application
-- five-minute SLI/SLO lab windows
+- short lab-oriented SLI/SLO measurement windows
 - local Loki storage
 - local Tempo storage
 - no high availability
 - no production object storage
-- no multi-window burn-rate alerting yet
 - no production retention strategy
 - no Kubernetes deployment
 - local monitoring interfaces do not use authentication
 
 ---
 
-# Next Phase
+# Future Extensions
 
-The next reliability improvement is **SLO burn-rate alerting**.
+The core observability and reliability engineering scope of this lab is complete.
 
-Instead of alerting only when a threshold is crossed, burn-rate monitoring asks:
-
-```text
-How quickly are we consuming the error budget?
-```
-
-The planned progression is:
+Potential future extensions include:
 
 ```text
-SLI
- ↓
-SLO
- ↓
-Error Budget
- ↓
-Burn Rate
- ↓
-Fast-burn Alert
- ↓
-Slow-burn Alert
+Longer production-style SLO windows
+Kubernetes deployment
+Highly available telemetry storage
+Production retention policies
+Authentication for monitoring interfaces
+Persistent object storage for Loki and Tempo
 ```
 
-After that, the platform can be extended toward Kubernetes deployment and longer production-style SLO windows.
+The current implementation already demonstrates the complete path from application telemetry through reliability monitoring and external incident notification.
 
 ---
 
@@ -1271,6 +1261,7 @@ RED
 SLIs
 SLOs
 Error Budgets
+Multi-window Burn Rates
 ```
 
 **CI**
