@@ -136,6 +136,19 @@ services:
 
     container_name: demo-api
     restart: unless-stopped
+    init: true
+    read_only: true
+
+    cap_drop:
+      - ALL
+
+    security_opt:
+      - no-new-privileges:true
+
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+
+    stop_grace_period: 10s
 
     environment:
       OTEL_SERVICE_NAME: demo-api
