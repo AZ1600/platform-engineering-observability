@@ -4,21 +4,42 @@
 
 A reproducible observability engineering lab built with **Prometheus, Grafana, OpenTelemetry, Loki, Tempo, Alertmanager, FastAPI, Docker, and Docker Compose**.
 
-The project demonstrates the complete operational path from application telemetry to dashboards, distributed tracing, centralized logging, alerting, SLO monitoring, error-budget burn-rate detection, CI validation, and external Slack notifications.
+The project demonstrates the complete operational path from application telemetry to dashboards, distributed tracing, centralized logging, alerting, SLO monitoring, error-budget burn-rate detection, automated Prometheus rule testing, end-to-end telemetry validation, and external Slack notifications.
 
 ```text
 Application
-    ↓
-Metrics + Logs + Traces
-    ↓
-Prometheus + OpenTelemetry
-    ↓
-Grafana + Loki + Tempo
-    ↓
-Alerts + SLOs + Error Budgets + Burn Rates
-    ↓
+    │
+    ├── Metrics
+    ├── Logs
+    └── Traces
+         │
+         ▼
+Prometheus + OpenTelemetry Collector
+         │
+         ├── Prometheus
+         ├── Loki
+         └── Tempo
+         │
+         ▼
+Grafana
+         │
+         ├── RED dashboards
+         ├── SLO dashboards
+         ├── Logs
+         └── Traces
+         │
+         ▼
+Prometheus Rules
+         │
+         ├── Application alerts
+         ├── SLOs
+         ├── Error budgets
+         └── Burn-rate alerts
+         │
+         ▼
 Alertmanager
-    ↓
+         │
+         ▼
 Slack
 ```
 
@@ -26,7 +47,7 @@ Slack
 
 # What This Project Demonstrates
 
-The lab currently includes:
+The lab includes:
 
 - FastAPI application instrumentation
 - Prometheus application metrics
@@ -35,9 +56,10 @@ The lab currently includes:
 - P50, P95, and P99 latency
 - route-level traffic analysis
 - structured JSON logging
-- Grafana Loki
+- Grafana Loki centralized logging
 - OpenTelemetry distributed tracing
 - Grafana Tempo
+- custom nested spans
 - log-to-trace correlation
 - infrastructure alerting
 - application-level alerting
@@ -45,11 +67,24 @@ The lab currently includes:
 - Slack alert notifications
 - availability and latency SLIs
 - availability and latency SLOs
-- error budget monitoring
+- error-budget monitoring
 - multi-window burn-rate monitoring
 - fast-burn and slow-burn alerting
 - Grafana dashboard provisioning
+- Prometheus rule unit testing with `promtool`
+- automated SLI and alert behavior validation
 - GitHub Actions configuration validation
+- end-to-end observability smoke testing
+- automated Prometheus metric verification
+- automated Loki log verification
+- automated Tempo trace verification
+- hardened non-root application container
+- read-only application root filesystem
+- dropped Linux capabilities
+- `no-new-privileges`
+- health-based service startup
+- fully pinned Python dependency lock
+- immutable SHA256-pinned observability images
 - controlled latency and failure testing
 
 ---
@@ -77,8 +112,8 @@ flowchart TB
     API -->|Metrics| Prometheus
     Node -->|Host metrics| Prometheus
 
-    API -->|Logs| OTel
-    API -->|Traces| OTel
+    API -->|Structured Logs| OTel
+    API -->|OTLP Traces| OTel
 
     OTel --> Loki
     OTel --> Tempo
@@ -105,7 +140,7 @@ Logs
 Traces
 ```
 
-and extends them with:
+and extends them with reliability engineering controls:
 
 ```text
 Alerting
@@ -114,13 +149,15 @@ SLOs
 Error Budgets
 Burn Rates
 External Notifications
+Rule Testing
+End-to-End Telemetry Validation
 ```
 
 ---
 
 # RED Application Monitoring
 
-The main application dashboard follows the RED method:
+The application dashboard follows the RED method:
 
 ```text
 R = Rate
@@ -130,15 +167,15 @@ D = Duration
 
 The dashboard includes:
 
-- Request Rate
-- HTTP 5xx Error Rate
-- P50 Latency
-- P95 Latency
-- P99 Latency
-- Request Rate by Route
-- Request Rate by Status Code
-- Average Latency by Route
-- Error Rate by Route
+- request rate
+- HTTP 5xx error rate
+- P50 latency
+- P95 latency
+- P99 latency
+- request rate by route
+- request rate by status code
+- average latency by route
+- error rate by route
 
 The dashboard is provisioned from:
 
@@ -148,7 +185,7 @@ grafana/dashboards/demo-api-red.json
 
 ![Grafana Demo API RED Dashboard](docs/screenshots/grafana-demo-api-red-dashboard.png)
 
-The test application contains intentional `/slow` and `/error` endpoints, allowing the dashboard to demonstrate real changes in latency and failure rate.
+The demo application contains intentional `/slow` and `/error` endpoints so changes in latency and failure rate can be generated deliberately and observed across the platform.
 
 ---
 
@@ -168,7 +205,15 @@ http_request_duration_seconds
 http_request_duration_highr_seconds
 ```
 
-The `/metrics` endpoint is excluded from application traffic calculations so Prometheus scrape traffic does not distort RED measurements.
+The `/metrics` endpoint is excluded from normal application traffic calculations so Prometheus scrape traffic does not distort RED measurements.
+
+Prometheus also monitors:
+
+```text
+up
+```
+
+for target availability.
 
 ---
 
@@ -176,17 +221,19 @@ The `/metrics` endpoint is excluded from application traffic calculations so Pro
 
 FastAPI is instrumented with OpenTelemetry.
 
-The trace pipeline is:
-
 ```text
 FastAPI
-   ↓
+   │
+   ▼
 OpenTelemetry SDK
-   ↓
+   │
+   ▼
 OpenTelemetry Collector
-   ↓
+   │
+   ▼
 Grafana Tempo
-   ↓
+   │
+   ▼
 Grafana
 ```
 
@@ -200,13 +247,13 @@ GET /work
 
 ![Grafana Tempo Work Trace](docs/screenshots/grafana-tempo-work-trace.png)
 
-This provides visibility beyond HTTP duration and shows where time was spent inside the application.
+This provides visibility beyond HTTP duration and shows where time is spent inside an application request.
 
 ---
 
 # Structured Logging
 
-The application writes structured JSON logs containing fields such as:
+The application writes structured JSON logs containing fields including:
 
 ```text
 timestamp
@@ -240,13 +287,17 @@ The log pipeline is:
 
 ```text
 FastAPI
-   ↓
+   │
+   ▼
 Structured JSON
-   ↓
+   │
+   ▼
 OpenTelemetry Collector
-   ↓
+   │
+   ▼
 Grafana Loki
-   ↓
+   │
+   ▼
 Grafana
 ```
 
@@ -261,31 +312,33 @@ trace_id
 span_id
 ```
 
-Grafana uses the trace ID as a derived field.
-
-This creates the investigation path:
+Grafana Loki uses the trace ID as a derived field.
 
 ```text
 Loki log
-   ↓
-TraceID
-   ↓
+   │
+   ▼
+Trace ID
+   │
+   ▼
 View Trace
-   ↓
+   │
+   ▼
 Tempo
-   ↓
+   │
+   ▼
 Matching distributed trace
 ```
 
 ![Grafana Loki Trace Correlation](docs/screenshots/grafana-loki-trace-correlation.png)
 
-This allows an operator to move directly from an error log to the trace for the same request.
+This creates a direct operational investigation path from an error log to the distributed trace for the same request.
 
 ---
 
 # Application Alerting
 
-Prometheus evaluates application-level alert rules from:
+Prometheus evaluates application-level alerts from:
 
 ```text
 prometheus/rules/application.yml
@@ -316,21 +369,47 @@ P95 latency > 1 second
 for at least 1 minute
 ```
 
-The alert lifecycle is:
+Alert lifecycle:
 
 ```text
 Application behaviour
-        ↓
+        │
+        ▼
 Prometheus metrics
-        ↓
+        │
+        ▼
 Alert rule
-        ↓
+        │
+        ▼
 PENDING
-        ↓
+        │
+        ▼
 FIRING
-        ↓
+        │
+        ▼
 Alertmanager
 ```
+
+---
+
+# Infrastructure Alerting
+
+Node Exporter provides host-level metrics including:
+
+- CPU
+- memory
+- filesystems
+- operating system statistics
+
+Prometheus also evaluates target health.
+
+The infrastructure alert:
+
+```text
+TargetDown
+```
+
+fires when a monitored target remains unavailable for at least one minute.
 
 ---
 
@@ -340,17 +419,20 @@ Alertmanager routes warning and critical alerts to Slack.
 
 ```text
 Prometheus
-     ↓
+     │
+     ▼
 Alertmanager
-     ↓
-Severity routing
-     ↓
+     │
+     ▼
+Severity Routing
+     │
+     ▼
 Slack
 ```
 
-The Slack integration was validated with a real application failure.
+The Slack integration was validated with real application failure scenarios.
 
-The notification demonstrated both:
+Notifications demonstrated both:
 
 ```text
 FIRING
@@ -360,24 +442,6 @@ RESOLVED
 states.
 
 ![Slack Application Alert Firing and Resolved](docs/screenshots/slack-application-alert-firing-resolved.png)
-
-This confirms the complete operational lifecycle:
-
-```text
-/error traffic
-      ↓
-5xx rate increases
-      ↓
-Prometheus alert fires
-      ↓
-Alertmanager
-      ↓
-Slack FIRING notification
-      ↓
-Application recovers
-      ↓
-Slack RESOLVED notification
-```
 
 ---
 
@@ -391,35 +455,33 @@ Locally it is stored in:
 .secrets/slack_webhook_url
 ```
 
-The directory is excluded by:
+The directory is ignored by Git:
 
 ```gitignore
 .secrets/
 ```
 
-Docker Compose mounts the file into Alertmanager as:
+Docker Compose mounts the secret into Alertmanager as:
 
 ```text
 /run/secrets/slack_webhook_url
 ```
 
-Alertmanager references the webhook using:
+Alertmanager references it with:
 
 ```yaml
 api_url_file: /run/secrets/slack_webhook_url
 ```
 
-This keeps the real webhook outside version-controlled configuration.
-
-GitHub Actions creates a harmless placeholder secret file only for configuration validation.
+GitHub Actions creates a harmless placeholder webhook file solely for configuration and integration testing.
 
 ---
 
 # SLIs and SLOs
 
-The project defines two reliability objectives.
+The project defines two service-level objectives.
 
-## Availability
+## Availability SLO
 
 ```text
 Availability SLO = 99%
@@ -441,7 +503,7 @@ demo_api:sli_availability_ratio:5m
 
 ---
 
-## Latency
+## Latency SLO
 
 ```text
 Latency SLO = 95%
@@ -465,16 +527,16 @@ demo_api:sli_latency_under_1s_ratio:5m
 
 # Error Budgets
 
-The SLOs define how much failure is acceptable.
+The SLOs define the amount of failure that is acceptable.
 
-For availability:
+Availability:
 
 ```text
 99% SLO
 → 1% failure budget
 ```
 
-For latency:
+Latency:
 
 ```text
 95% SLO
@@ -496,11 +558,30 @@ Values are constrained between:
 
 ---
 
+# No-Traffic Handling
+
+No application traffic is not treated as a service failure.
+
+The SLI rules emit values only when application traffic exists.
+
+```text
+No requests
+    │
+    ▼
+No new SLI sample
+```
+
+This prevents an idle application from appearing as:
+
+```text
+0% available
+```
+
+---
+
 # SLO Burn-Rate Alerting
 
-The project also monitors how quickly the service consumes its available error budget.
-
-Burn rate compares the observed failure rate with the amount of failure allowed by the SLO.
+The platform monitors how quickly the service consumes its error budget.
 
 ```text
 Burn Rate
@@ -518,47 +599,49 @@ A burn rate of:
 
 means the service is consuming its error budget at exactly the sustainable rate.
 
-Higher values indicate increasingly rapid budget consumption.
+---
 
 ## Availability Burn Rate
 
-The availability SLO is:
+Availability target:
 
 ```text
 99%
 ```
 
-which permits:
+Allowed failure:
 
 ```text
-1% failed requests
+1%
 ```
 
-For example:
+Example:
 
 ```text
-50% failures
+50% failed requests
 ÷
 1% allowed failures
 =
 50x burn rate
 ```
 
+---
+
 ## Latency Burn Rate
 
-The latency SLO requires:
+Latency objective:
 
 ```text
-95% of requests complete within 1 second
+95% within 1 second
 ```
 
-which permits:
+Allowed slow requests:
 
 ```text
-5% slow requests
+5%
 ```
 
-For example:
+Example:
 
 ```text
 50% slow requests
@@ -568,9 +651,11 @@ For example:
 10x burn rate
 ```
 
-## Multi-Window Detection
+---
 
-Prometheus records burn rate over multiple windows:
+# Multi-Window Burn-Rate Detection
+
+Prometheus records burn rate over:
 
 ```text
 1 minute
@@ -578,13 +663,13 @@ Prometheus records burn rate over multiple windows:
 15 minutes
 ```
 
-The rules are stored in:
+Rules are stored in:
 
 ```text
 prometheus/rules/burn-rate.yml
 ```
 
-### Fast Burn
+## Fast Burn
 
 Fast-burn alerts require both short windows to exceed:
 
@@ -600,22 +685,22 @@ AND
 5m burn rate > 4
 ```
 
-These alerts are classified as:
+Severity:
 
 ```text
-severity = critical
+critical
 ```
 
-Current fast-burn alerts:
+Alerts:
 
 ```text
 DemoApiAvailabilityFastBurn
 DemoApiLatencyFastBurn
 ```
 
-### Slow Burn
+## Slow Burn
 
-Slow-burn alerts detect lower but sustained error-budget consumption.
+Slow-burn alerts detect lower but sustained budget consumption.
 
 ```text
 5m burn rate > 1
@@ -623,77 +708,50 @@ AND
 15m burn rate > 1
 ```
 
-These alerts are classified as:
+Severity:
 
 ```text
-severity = warning
+warning
 ```
 
-Current slow-burn alerts:
+Alerts:
 
 ```text
 DemoApiAvailabilitySlowBurn
 DemoApiLatencySlowBurn
 ```
 
-## Slack Burn-Rate Notifications
+---
 
-Burn-rate alerts use the existing Alertmanager-to-Slack notification pipeline.
+# Burn-Rate Notification Evidence
+
+Burn-rate alerts use the existing Prometheus → Alertmanager → Slack pipeline.
 
 ```text
 Application degradation
-        ↓
+        │
+        ▼
 SLI falls below objective
-        ↓
-Error budget consumption
-        ↓
+        │
+        ▼
+Error-budget consumption
+        │
+        ▼
 Burn-rate calculation
-        ↓
+        │
+        ▼
 Fast / Slow burn alert
-        ↓
+        │
+        ▼
 Alertmanager
-        ↓
+        │
+        ▼
 Slack
 ```
 
 Validation produced both fast-burn and slow-burn alerts.
 
-Fast-burn alerts demonstrated:
-
-```text
-FIRING
-RESOLVED
-```
-
-and sustained degradation caused both slow-burn alerts to reach:
-
-```text
-FIRING
-```
-
 ![Slack Burn Rate Alerts](docs/screenshots/slack-burn-rate-alerts.png)
-
-This demonstrates alerting based not only on instantaneous thresholds, but also on the rate at which reliability budget is being consumed.
-
----
-
-# No-Traffic Handling
-
-No application traffic is not treated as a service failure.
-
-The SLI rules only emit values when application traffic exists.
-
-```text
-No requests
-    ↓
-No new SLI sample
-```
-
-This prevents an idle application from incorrectly appearing as:
-
-```text
-0% available
-```
 
 ---
 
@@ -711,7 +769,7 @@ from:
 grafana/dashboards/demo-api-slo.json
 ```
 
-The dashboard shows:
+The dashboard includes:
 
 - Availability SLI
 - Availability SLO
@@ -725,42 +783,241 @@ The dashboard shows:
 
 ![Grafana SLO Error Budget](docs/screenshots/grafana-slo-error-budget.png)
 
-A deliberate failure test produced:
-
-```text
-Availability SLI = 50%
-Availability SLO = 99%
-
-Latency SLI      = 50%
-Latency SLO      = 95%
-
-Error budgets    = 0%
-```
-
-The short five-minute measurement windows are intentional for local lab validation.
+The short measurement windows are intentional for local lab validation.
 
 Production SLO implementations would normally use significantly longer rolling windows.
 
 ---
 
-# Infrastructure Monitoring
+# Prometheus Rule Unit Testing
 
-Node Exporter provides host-level metrics including:
+Prometheus configuration validation alone proves that rules are syntactically valid.
 
-- CPU
-- memory
-- filesystems
-- operating system statistics
-
-Prometheus also monitors target health.
-
-The infrastructure alert:
+This project goes further by testing rule behaviour with:
 
 ```text
-TargetDown
+promtool test rules
 ```
 
-fires when a monitored target remains unavailable for one minute.
+Tests are stored in:
+
+```text
+prometheus/tests/rules.test.yml
+```
+
+The unit tests currently verify representative reliability behavior including:
+
+- `TargetDown`
+- high HTTP 5xx error-rate alerting
+- availability SLI calculation
+- availability fast-burn alerting
+- availability slow-burn alerting
+
+The tests use synthetic time-series data so alert behavior can be validated deterministically without waiting for real incidents.
+
+Example validation path:
+
+```text
+Synthetic Prometheus series
+        │
+        ▼
+Recording Rules
+        │
+        ▼
+SLI Calculation
+        │
+        ▼
+Burn-Rate Calculation
+        │
+        ▼
+Alert Evaluation
+        │
+        ▼
+Expected Labels + Annotations
+```
+
+This verifies not only Prometheus syntax, but operational logic.
+
+---
+
+# End-to-End Observability Smoke Testing
+
+GitHub Actions also starts the complete observability stack and verifies that telemetry reaches its intended destination.
+
+The smoke test is implemented in:
+
+```text
+scripts/observability-smoke.sh
+```
+
+The test:
+
+1. starts the complete Docker Compose stack
+2. waits for platform readiness
+3. generates real application traffic
+4. verifies Prometheus is scraping the application
+5. verifies application metrics are queryable
+6. verifies application logs arrive in Loki
+7. verifies application traces arrive in Tempo
+8. captures service status and logs on CI failure
+9. destroys the test stack and volumes after completion
+
+Validated path:
+
+```text
+FastAPI
+   ├── Metrics ───────────────→ Prometheus
+   │
+   ├── Structured Logs
+   │         │
+   │         ▼
+   │   OpenTelemetry Collector
+   │         │
+   │         └───────────────→ Loki
+   │
+   └── Traces
+             │
+             ▼
+      OpenTelemetry Collector
+             │
+             └───────────────→ Tempo
+```
+
+Successful smoke-test output includes:
+
+```text
+Demo API: ready
+Prometheus: ready
+Loki: ready
+Tempo: ready
+Grafana: ready
+Alertmanager: ready
+
+Application telemetry generated.
+
+Prometheus demo-api target: verified
+Prometheus application metrics: verified
+Loki application logs: verified
+Tempo application traces: verified
+
+End-to-end observability smoke test passed.
+```
+
+---
+
+# Hardened Application Runtime
+
+The demo API runs using a hardened container configuration.
+
+## Docker Image
+
+The application image:
+
+- uses Python 3.12 slim
+- runs as non-root UID/GID `10001`
+- uses an explicit application user and group
+- uses pinned Python dependencies
+- includes an application health check
+- avoids running as root
+
+Runtime identity:
+
+```text
+uid=10001(appuser)
+gid=10001(appgroup)
+```
+
+## Docker Compose Runtime
+
+The API additionally uses:
+
+```text
+read-only root filesystem
+all Linux capabilities dropped
+no-new-privileges
+restricted tmpfs at /tmp
+init process handling
+graceful shutdown period
+```
+
+Writes to the root filesystem are rejected while `/tmp` remains available as an ephemeral writable path.
+
+---
+
+# Health-Based Startup
+
+The API container includes a real `/health` probe.
+
+Prometheus uses:
+
+```yaml
+depends_on:
+  demo-api:
+    condition: service_healthy
+```
+
+This ensures Prometheus does not begin normal startup until the application has reached a healthy state.
+
+---
+
+# Dependency Reproducibility
+
+Direct application dependencies are maintained in:
+
+```text
+app/requirements.in
+```
+
+A fully pinned dependency lock is generated as:
+
+```text
+app/requirements.txt
+```
+
+This locks both direct and transitive Python dependencies.
+
+Example workflow:
+
+```bash
+pip-compile \
+  --resolver=backtracking \
+  --output-file=requirements.txt \
+  requirements.in
+```
+
+The runtime image installs from the pinned lock file rather than unconstrained package names.
+
+---
+
+# Immutable Observability Images
+
+External observability platform images are pinned to immutable SHA256 digests in `docker-compose.yml`.
+
+Examples include:
+
+```text
+Prometheus
+Grafana
+Node Exporter
+Alertmanager
+Tempo
+Loki
+OpenTelemetry Collector
+```
+
+Instead of:
+
+```text
+image: vendor/image:latest
+```
+
+the stack uses:
+
+```text
+image: vendor/image@sha256:...
+```
+
+This prevents unexpected upstream image changes from silently altering the lab.
 
 ---
 
@@ -771,7 +1028,7 @@ The FastAPI application exists specifically to generate predictable telemetry.
 | Endpoint | Purpose |
 |---|---|
 | `GET /` | Basic application response |
-| `GET /health` | Health check |
+| `GET /health` | Application health check |
 | `GET /work` | Normal request with nested spans |
 | `GET /slow` | Intentional high-latency request |
 | `GET /error` | Intentional HTTP 500 failure |
@@ -781,31 +1038,36 @@ The FastAPI application exists specifically to generate predictable telemetry.
 
 # Failure Testing
 
-The lab deliberately generates abnormal behaviour.
+The lab deliberately generates abnormal behavior.
 
 ## Application Failure
 
 ```text
 GET /error
-      ↓
+      │
+      ▼
 HTTP 500
-      ↓
+      │
+      ▼
 Prometheus metrics
-      ↓
-RED dashboard
-      ↓
+      │
+      ├── RED dashboard
+      ├── Availability SLI
+      └── Alert rules
+      │
+      ▼
 ERROR log
-      ↓
+      │
+      ▼
 Loki
-      ↓
+      │
+      ▼
 Tempo trace
-      ↓
-Availability SLI impact
-      ↓
-Prometheus alert
-      ↓
+      │
+      ▼
 Alertmanager
-      ↓
+      │
+      ▼
 Slack
 ```
 
@@ -813,71 +1075,103 @@ Slack
 
 ```text
 GET /slow
-      ↓
+      │
+      ▼
 ~2 second response
-      ↓
+      │
+      ▼
 Latency histogram
-      ↓
-P95 / P99 increase
-      ↓
+      │
+      ├── P95 / P99 increase
+      ├── Latency SLI
+      └── Latency alert
+      │
+      ▼
 WARNING log
-      ↓
+      │
+      ▼
 Tempo trace
-      ↓
-Latency SLI impact
-      ↓
-Latency alert
 ```
 
 ---
 
 # GitHub Actions Validation
 
-The repository contains:
+The workflow is located at:
 
 ```text
 .github/workflows/validate-observability.yml
 ```
 
-The workflow runs on pull requests and pushes to `main`.
-
-It automatically validates:
+It runs on:
 
 ```text
-Docker Compose configuration
-FastAPI Docker image build
-Python application syntax
-Prometheus configuration
-Prometheus alert rules
-Prometheus SLI/SLO recording rules
-Prometheus burn-rate rules
-Alertmanager configuration
-Grafana dashboard JSON
+pull requests to main
+pushes to main
 ```
 
-The CI pipeline is:
+The pipeline has two major phases.
+
+## Configuration and Rule Validation
 
 ```text
-Pull Request
-     ↓
 Checkout
-     ↓
-Create CI secret fixtures
-     ↓
+   │
+   ▼
+Create CI secret fixture
+   │
+   ▼
 Docker Compose validation
-     ↓
+   │
+   ▼
 Application image build
-     ↓
-Python validation
-     ↓
-Prometheus validation
-     ↓
-Alertmanager validation
-     ↓
-Grafana JSON validation
+   │
+   ▼
+Python syntax validation
+   │
+   ▼
+Prometheus config validation
+   │
+   ▼
+Prometheus rule unit tests
+   │
+   ▼
+Alertmanager config validation
+   │
+   ▼
+Grafana dashboard JSON validation
 ```
 
-This moves configuration validation out of a purely manual workflow and into version-controlled CI.
+## End-to-End Smoke Test
+
+```text
+Start full stack
+      │
+      ▼
+Wait for readiness
+      │
+      ▼
+Generate application traffic
+      │
+      ├── Prometheus metrics
+      ├── Loki logs
+      └── Tempo traces
+      │
+      ▼
+Verify each telemetry backend
+      │
+      ▼
+SUCCESS
+```
+
+Failure diagnostics include:
+
+```text
+docker compose ps
+docker compose logs
+```
+
+and CI always performs stack cleanup afterwards.
 
 ---
 
@@ -897,10 +1191,28 @@ This moves configuration validation out of a purely manual workflow and into ver
 ├── app/
 │   ├── Dockerfile
 │   ├── main.py
+│   ├── requirements.in
 │   └── requirements.txt
 │
 ├── docs/
 │   └── screenshots/
+│       ├── alertmanager-application-alerts.png
+│       ├── alertmanager-target-down.png
+│       ├── grafana-demo-api-red-dashboard.png
+│       ├── grafana-loki-structured-logs.png
+│       ├── grafana-loki-trace-correlation.png
+│       ├── grafana-slo-error-budget.png
+│       ├── grafana-tempo-error-trace.png
+│       ├── grafana-tempo-work-trace.png
+│       ├── prometheus-alert-firing.png
+│       ├── prometheus-application-alerts.png
+│       ├── prometheus-application-rule-health.png
+│       ├── prometheus-burn-rate-alerts.png
+│       ├── prometheus-burn-rate-rule-health.png
+│       ├── prometheus-sli-slo-rule-health.png
+│       ├── prometheus-targets.png
+│       ├── slack-application-alert-firing-resolved.png
+│       └── slack-burn-rate-alerts.png
 │
 ├── grafana/
 │   ├── dashboards/
@@ -923,11 +1235,16 @@ This moves configuration validation out of a purely manual workflow and into ver
 │
 ├── prometheus/
 │   ├── prometheus.yml
-│   └── rules/
-│       ├── application.yml
-│       ├── burn-rate.yml
-│       ├── slo.yml
-│       └── targets.yml
+│   ├── rules/
+│   │   ├── application.yml
+│   │   ├── burn-rate.yml
+│   │   ├── slo.yml
+│   │   └── targets.yml
+│   └── tests/
+│       └── rules.test.yml
+│
+├── scripts/
+│   └── observability-smoke.sh
 │
 ├── tempo/
 │   └── tempo.yml
@@ -965,13 +1282,34 @@ git clone https://github.com/AZ1600/platform-engineering-observability.git
 cd platform-engineering-observability
 ```
 
-Start:
+---
+
+# Slack Webhook Setup
+
+Create the local secret directory:
+
+```bash
+mkdir -p .secrets
+```
+
+Store your webhook:
+
+```bash
+printf '%s' 'YOUR_SLACK_WEBHOOK_URL' \
+  > .secrets/slack_webhook_url
+```
+
+The `.secrets/` directory is ignored by Git.
+
+---
+
+# Start the Stack
 
 ```bash
 docker compose up -d --build
 ```
 
-Check:
+Check service state:
 
 ```bash
 docker compose ps
@@ -988,6 +1326,12 @@ node-exporter
 otel-collector
 prometheus
 tempo
+```
+
+The demo API should report:
+
+```text
+healthy
 ```
 
 ---
@@ -1027,7 +1371,7 @@ for i in {1..5}; do
 done
 ```
 
-Failed requests:
+Failure requests:
 
 ```bash
 for i in {1..5}; do
@@ -1042,16 +1386,25 @@ done
 Docker Compose:
 
 ```bash
-docker compose config
+docker compose config --quiet
 ```
 
-Prometheus:
+Prometheus configuration:
 
 ```bash
 docker compose run --rm --no-deps \
   --entrypoint /bin/promtool \
   prometheus \
   check config /etc/prometheus/prometheus.yml
+```
+
+Prometheus rule tests:
+
+```bash
+docker compose run --rm --no-deps \
+  --entrypoint /bin/promtool \
+  prometheus \
+  test rules /etc/prometheus/tests/rules.test.yml
 ```
 
 Alertmanager:
@@ -1073,60 +1426,126 @@ done
 
 ---
 
+# Run the End-to-End Smoke Test
+
+Start from a clean environment:
+
+```bash
+docker compose down --volumes
+docker compose up -d --build
+```
+
+Run:
+
+```bash
+./scripts/observability-smoke.sh
+```
+
+Expected final result:
+
+```text
+End-to-end observability smoke test passed.
+```
+
+---
+
+# Security and Reproducibility
+
+The lab applies several practical controls:
+
+```text
+Demo API non-root UID/GID
+Read-only application root filesystem
+Linux capabilities dropped
+no-new-privileges
+Restricted writable /tmp
+Docker health check
+Health-aware dependency startup
+Pinned Python dependency graph
+Immutable SHA256 platform images
+Local secret management
+Read-only mounted configuration
+CI validation
+Automated telemetry verification
+```
+
+These controls make the lab more deterministic and reduce the gap between a basic local demo and production-style platform engineering practices.
+
+---
+
 # Current Coverage
 
 ```text
-Infrastructure metrics             ✓
-Application metrics                ✓
-RED monitoring                     ✓
-P50/P95/P99 latency                ✓
-Route-level monitoring             ✓
+Infrastructure metrics                   ✓
+Application metrics                      ✓
+RED monitoring                           ✓
+P50/P95/P99 latency                      ✓
+Route-level monitoring                   ✓
 
-Distributed tracing                ✓
-Custom spans                       ✓
-Failure tracing                    ✓
-Latency tracing                    ✓
+Distributed tracing                      ✓
+Custom spans                             ✓
+Failure tracing                          ✓
+Latency tracing                          ✓
 
-Structured logging                 ✓
-Centralized logging                ✓
-Log parsing                        ✓
-Log-to-trace correlation           ✓
+Structured logging                       ✓
+Centralized logging                      ✓
+Log parsing                              ✓
+Log-to-trace correlation                 ✓
 
-Infrastructure alerting            ✓
-Application alerting               ✓
-Alertmanager routing               ✓
-Slack notifications                ✓
-FIRING notifications               ✓
-RESOLVED notifications             ✓
+Infrastructure alerting                  ✓
+Application alerting                     ✓
+Alertmanager routing                     ✓
+Slack notifications                      ✓
+FIRING notifications                     ✓
+RESOLVED notifications                   ✓
 
-Availability SLI                   ✓
-Latency SLI                        ✓
-Availability SLO                   ✓
-Latency SLO                        ✓
-Error budget calculation           ✓
-No-traffic handling                ✓
-SLO dashboard                      ✓
+Availability SLI                         ✓
+Latency SLI                              ✓
+Availability SLO                         ✓
+Latency SLO                              ✓
+Error-budget calculation                 ✓
+No-traffic handling                      ✓
+SLO dashboard                            ✓
 
-Burn-rate recording rules          ✓
-Fast-burn alerting                 ✓
-Slow-burn alerting                 ✓
-Burn-rate Slack notifications      ✓
+Burn-rate recording rules                ✓
+Fast-burn alerting                       ✓
+Slow-burn alerting                       ✓
+Burn-rate Slack notifications            ✓
 
-Grafana provisioning               ✓
-GitHub Actions validation          ✓
-Failure/recovery testing           ✓
+Prometheus rule unit testing             ✓
+TargetDown rule test                     ✓
+5xx alert rule test                      ✓
+Availability SLI rule test               ✓
+Availability fast-burn rule test         ✓
+Availability slow-burn rule test         ✓
+
+Hardened application runtime             ✓
+Non-root application                     ✓
+Read-only root filesystem                ✓
+Dropped capabilities                     ✓
+Pinned Python dependencies               ✓
+Immutable platform images                ✓
+
+Grafana provisioning                     ✓
+GitHub Actions validation                ✓
+End-to-end CI smoke testing              ✓
+Prometheus metric verification           ✓
+Loki log verification                    ✓
+Tempo trace verification                 ✓
+Failure/recovery testing                 ✓
 ```
 
 ---
 
 # Current Limitations
 
-This is intentionally a local observability engineering lab.
+This repository is intentionally a local observability engineering lab rather than a production monitoring platform.
 
 Current limitations include:
 
 - single demo application
-- short lab-oriented SLI/SLO measurement windows
+- short lab-oriented SLI/SLO windows
+- single-node Prometheus
 - local Loki storage
 - local Tempo storage
 - no high availability
@@ -1134,29 +1553,33 @@ Current limitations include:
 - no production retention strategy
 - no Kubernetes deployment
 - local monitoring interfaces do not use authentication
+- no remote-write architecture
+- no long-term metrics backend
+- no production secrets manager
 
 ---
 
 # Future Extensions
-
-The core observability and reliability engineering scope of this lab is complete.
 
 Potential future extensions include:
 
 ```text
 Longer production-style SLO windows
 Kubernetes deployment
+Prometheus remote write
 Highly available telemetry storage
 Production retention policies
 Authentication for monitoring interfaces
 Persistent object storage for Loki and Tempo
+Long-term metrics storage
+Secrets-manager integration
 ```
 
-The current implementation already demonstrates the complete path from application telemetry through reliability monitoring and external incident notification.
+The core observability engineering scope is already complete.
 
 ---
 
-# Roadmap
+# Completed Roadmap
 
 ```text
 [Complete] Prometheus
@@ -1188,25 +1611,42 @@ The current implementation already demonstrates the complete path from applicati
 [Complete] Latency SLI
 [Complete] Availability SLO
 [Complete] Latency SLO
-[Complete] Error budget monitoring
+[Complete] Error-budget monitoring
 [Complete] SLO dashboard
 
 [Complete] Fast-burn alerting
 [Complete] Slow-burn alerting
 [Complete] Burn-rate Slack notifications
 
-[Complete] GitHub Actions validation
+[Complete] Prometheus rule unit testing
+[Complete] Target health rule testing
+[Complete] Application alert rule testing
+[Complete] Availability SLI rule testing
+[Complete] Fast-burn rule testing
+[Complete] Slow-burn rule testing
 
-[Future] Longer production-style SLO windows
-[Future] Kubernetes deployment
-[Future] Highly available telemetry storage
+[Complete] Non-root demo API
+[Complete] Read-only application filesystem
+[Complete] Linux capability reduction
+[Complete] no-new-privileges
+[Complete] Container health checks
+[Complete] Health-aware service dependencies
+[Complete] Pinned Python dependencies
+[Complete] Immutable platform image digests
+
+[Complete] GitHub Actions configuration validation
+[Complete] Full-stack CI startup
+[Complete] End-to-end Prometheus verification
+[Complete] End-to-end Loki verification
+[Complete] End-to-end Tempo verification
+[Complete] Automatic CI cleanup
 ```
 
 ---
 
 # Technology Stack
 
-**Application**
+## Application
 
 ```text
 Python
@@ -1214,39 +1654,39 @@ FastAPI
 Uvicorn
 ```
 
-**Telemetry**
+## Telemetry
 
 ```text
 OpenTelemetry
 OpenTelemetry Collector
 ```
 
-**Metrics**
+## Metrics
 
 ```text
 Prometheus
 Node Exporter
 ```
 
-**Logs**
+## Logs
 
 ```text
 Grafana Loki
 ```
 
-**Traces**
+## Traces
 
 ```text
 Grafana Tempo
 ```
 
-**Visualization**
+## Visualization
 
 ```text
 Grafana
 ```
 
-**Alerting**
+## Alerting
 
 ```text
 Prometheus Rules
@@ -1254,7 +1694,7 @@ Alertmanager
 Slack
 ```
 
-**Reliability**
+## Reliability Engineering
 
 ```text
 RED
@@ -1262,20 +1702,118 @@ SLIs
 SLOs
 Error Budgets
 Multi-window Burn Rates
+Prometheus Rule Tests
 ```
 
-**CI**
+## CI
 
 ```text
 GitHub Actions
+promtool
+End-to-End Smoke Testing
 ```
 
-**Platform**
+## Platform
 
 ```text
 Docker
 Docker Compose
+Immutable Image Digests
 ```
+
+---
+
+# Engineering Skills Demonstrated
+
+## Observability Engineering
+
+- metrics architecture
+- centralized logging
+- distributed tracing
+- OpenTelemetry instrumentation
+- telemetry collection
+- log-to-trace correlation
+- dashboard provisioning
+- alert routing
+
+## Site Reliability Engineering
+
+- RED monitoring
+- SLIs
+- SLOs
+- error budgets
+- multi-window burn-rate alerts
+- service health monitoring
+- failure simulation
+- recovery validation
+
+## Platform Engineering
+
+- reproducible local platform environments
+- Docker Compose orchestration
+- health-aware service dependencies
+- immutable image references
+- configuration-as-code
+- automated validation
+
+## Security
+
+- non-root container workloads
+- read-only root filesystems
+- Linux capability reduction
+- `no-new-privileges`
+- secret isolation
+- pinned dependencies
+- immutable container images
+
+## CI/CD
+
+- GitHub Actions
+- configuration validation
+- Prometheus unit testing
+- integration testing
+- end-to-end smoke testing
+- failure diagnostics
+- automated cleanup
+
+---
+
+# Purpose
+
+This repository is an **observability and reliability engineering case study**.
+
+It demonstrates how an application can be instrumented and operated through the complete telemetry lifecycle:
+
+```text
+Application
+    │
+    ├── Metrics
+    ├── Logs
+    └── Traces
+    │
+    ▼
+Collection
+    │
+    ▼
+Storage
+    │
+    ▼
+Visualization
+    │
+    ▼
+Reliability Analysis
+    │
+    ▼
+Alerting
+    │
+    ▼
+Incident Notification
+    │
+    ▼
+Automated Validation
+```
+
+The project focuses on practical Platform Engineering, Site Reliability Engineering, DevOps, application observability, telemetry pipelines, SLO engineering, container hardening, and automated operational validation.
 
 ---
 
