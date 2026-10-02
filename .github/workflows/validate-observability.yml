@@ -58,6 +58,13 @@ jobs:
             prometheus \
             check config /etc/prometheus/prometheus.yml
 
+      - name: Test Prometheus rules
+        run: |
+          docker compose run --rm --no-deps \
+            --entrypoint /bin/promtool \
+            prometheus \
+            test rules /etc/prometheus/tests/rules.test.yml
+
       - name: Validate Alertmanager configuration
         run: |
           docker compose run --rm --no-deps \

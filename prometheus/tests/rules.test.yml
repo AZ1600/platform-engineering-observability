@@ -1,0 +1,120 @@
+---
+rule_files:
+  - ../rules/application.yml
+  - ../rules/slo.yml
+  - ../rules/burn-rate.yml
+  - ../rules/targets.yml
+
+evaluation_interval: 1m
+
+group_eval_order:
+  - demo-api-sli-slo
+  - demo-api-burn-rate
+  - demo-api-application
+  - target-health
+
+tests:
+  - name: target-down-alert
+    interval: 1m
+
+    input_series:
+      - series: 'up{job="demo-api",instance="demo-api:8000"}'
+        values: "0x5"
+
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: TargetDown
+        exp_alerts:
+          - exp_labels:
+              alertname: TargetDown
+              instance: demo-api:8000
+              job: demo-api
+              severity: warning
+            exp_annotations:
+              summary: "Target demo-api:8000 is down"
+              description: "Prometheus cannot scrape demo-api at demo-api:8000."
+
+  - name: high-5xx-error-rate-alert
+    interval: 1m
+
+    input_series:
+      - series: 'http_requests_total{job="demo-api",handler="/work",status="200"}'
+        values: "0+60x10"
+
+      - series: 'http_requests_total{job="demo-api",handler="/error",status="500"}'
+        values: "0+60x10"
+
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: DemoApiHigh5xxErrorRate
+        exp_alerts:
+          - exp_labels:
+              alertname: DemoApiHigh5xxErrorRate
+              severity: critical
+              service: demo-api
+              signal: errors
+            exp_annotations:
+              summary: "Demo API 5xx error rate is high"
+              description: "The demo-api HTTP 5xx error rate has remained above 10% for at least one minute."
+
+  - name: healthy-availability-sli
+    interval: 1m
+
+    input_series:
+      - series: 'http_requests_total{job="demo-api",handler="/work",status="200"}'
+        values: "0+60x10"
+
+    promql_expr_test:
+      - expr: demo_api:sli_availability_ratio:5m
+        eval_time: 6m
+        exp_samples:
+          - labels: '{__name__="demo_api:sli_availability_ratio:5m"}'
+            value: 1
+
+  - name: availability-fast-burn
+    interval: 15s
+
+    input_series:
+      - series: 'http_requests_total{job="demo-api",handler="/work",status="200"}'
+        values: "0+15x40"
+
+      - series: 'http_requests_total{job="demo-api",handler="/error",status="500"}'
+        values: "0+15x40"
+
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: DemoApiAvailabilityFastBurn
+        exp_alerts:
+          - exp_labels:
+              alertname: DemoApiAvailabilityFastBurn
+              severity: critical
+              service: demo-api
+              signal: availability
+              slo: availability
+            exp_annotations:
+              summary: "Demo API availability error budget is burning quickly"
+              description: "Availability error budget consumption has exceeded 4x the sustainable burn rate."
+
+  - name: availability-slow-burn
+    interval: 15s
+
+    input_series:
+      - series: 'http_requests_total{job="demo-api",handler="/work",status="200"}'
+        values: "0+15x80"
+
+      - series: 'http_requests_total{job="demo-api",handler="/error",status="500"}'
+        values: "0+15x80"
+
+    alert_rule_test:
+      - eval_time: 18m
+        alertname: DemoApiAvailabilitySlowBurn
+        exp_alerts:
+          - exp_labels:
+              alertname: DemoApiAvailabilitySlowBurn
+              severity: warning
+              service: demo-api
+              signal: availability
+              slo: availability
+            exp_annotations:
+              summary: "Demo API availability error budget is being consumed"
+              description: "Availability error budget consumption has remained above the sustainable burn rate."
