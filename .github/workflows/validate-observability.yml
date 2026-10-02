@@ -82,3 +82,37 @@ jobs:
           done
 
           echo "Grafana dashboard JSON valid"
+  smoke-test:
+    name: End-to-end smoke test
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create CI secret fixtures
+        run: |
+          mkdir -p .secrets
+          printf '%s' \
+            'https://example.invalid/slack-webhook' \
+            > .secrets/slack_webhook_url
+
+      - name: Start observability stack
+        run: docker compose up -d --build
+
+      - name: Run end-to-end smoke test
+        run: ./scripts/observability-smoke.sh
+
+      - name: Show service status
+        if: always()
+        run: docker compose ps
+
+      - name: Show service logs on failure
+        if: failure()
+        run: docker compose logs --no-color --tail=200
+
+      - name: Stop observability stack
+        if: always()
+        run: docker compose down --volumes
