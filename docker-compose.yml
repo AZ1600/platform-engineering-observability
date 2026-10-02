@@ -9,6 +9,7 @@ services:
 
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/tests:/etc/prometheus/tests:ro
       - ./prometheus/rules:/etc/prometheus/rules:ro
       - prometheus_data:/prometheus
 
