@@ -556,6 +556,15 @@ Values are constrained between:
 0% and 100%
 ```
 
+The recorded remaining-budget value is a fraction from `0` (exhausted) to
+`1` (fully available). The two rules clamp calculated values between these
+bounds: healthy traffic returns `1`, using half the allowed bad-event rate
+returns `0.5`, and exceeding the allowance returns `0`. Values are not
+forced to zero when traffic is healthy.
+
+These are **5-minute lab snapshots**, not a rolling 30-day error-budget
+accounting system or proof of long-term SLO compliance.
+
 ---
 
 # No-Traffic Handling
@@ -812,6 +821,8 @@ The unit tests currently verify representative reliability behavior including:
 - availability SLI calculation
 - availability fast-burn alerting
 - availability slow-burn alerting
+- availability and latency remaining-budget calculations (full, partial and exhausted)
+- no-traffic behaviour for remaining-budget recording rules
 
 The tests use synthetic time-series data so alert behavior can be validated deterministically without waiting for real incidents.
 

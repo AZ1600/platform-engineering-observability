@@ -86,9 +86,9 @@ groups:
                 /
                 (1 - 0.99)
               ),
-              1
+              0
             ),
-            0
+            1
           )
 
       - record: demo_api:error_budget_latency_remaining:5m
@@ -101,7 +101,7 @@ groups:
                 /
                 (1 - 0.95)
               ),
-              1
+              0
             ),
-            0
+            1
           )
