@@ -95,6 +95,103 @@ tests:
               summary: "Demo API availability error budget is burning quickly"
               description: "Availability error budget consumption has exceeded 4x the sustainable burn rate."
 
+
+  # Error-budget recording rules output fractions between 0 and 1. These
+  # tests catch reversed clamp bounds that would make every result zero.
+  - name: healthy-error-budgets-remain-full
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="demo-api",handler="/work",status="200"}'
+        values: "0+100x10"
+      - series: 'http_request_duration_seconds_bucket{job="demo-api",handler="/work",le="1.0"}'
+        values: "0+100x10"
+      - series: 'http_request_duration_seconds_count{job="demo-api",handler="/work"}'
+        values: "0+100x10"
+    promql_expr_test:
+      - expr: demo_api:error_budget_availability_remaining:5m
+        eval_time: 6m
+        exp_samples:
+          - labels: '{__name__="demo_api:error_budget_availability_remaining:5m"}'
+            value: 1
+      - expr: demo_api:error_budget_latency_remaining:5m
+        eval_time: 6m
+        exp_samples:
+          - labels: '{__name__="demo_api:error_budget_latency_remaining:5m"}'
+            value: 1
+
+  - name: partial-availability-budget-consumption
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="demo-api",handler="/work",status="200"}'
+        values: "0+995x10"
+      - series: 'http_requests_total{job="demo-api",handler="/error",status="500"}'
+        values: "0+5x10"
+    promql_expr_test:
+      - expr: round(demo_api:error_budget_availability_remaining:5m, 0.01)
+        eval_time: 6m
+        exp_samples:
+          - labels: '{}'
+            value: 0.5
+
+  - name: exhausted-availability-budget-stays-at-zero
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="demo-api",handler="/work",status="200"}'
+        values: "0+98x10"
+      - series: 'http_requests_total{job="demo-api",handler="/error",status="500"}'
+        values: "0+2x10"
+    promql_expr_test:
+      - expr: demo_api:error_budget_availability_remaining:5m
+        eval_time: 6m
+        exp_samples:
+          - labels: '{__name__="demo_api:error_budget_availability_remaining:5m"}'
+            value: 0
+
+  - name: partial-latency-budget-consumption
+    interval: 1m
+    input_series:
+      - series: 'http_request_duration_seconds_bucket{job="demo-api",handler="/work",le="1.0"}'
+        values: "0+39x10"
+      - series: 'http_request_duration_seconds_count{job="demo-api",handler="/work"}'
+        values: "0+40x10"
+    promql_expr_test:
+      - expr: round(demo_api:error_budget_latency_remaining:5m, 0.01)
+        eval_time: 6m
+        exp_samples:
+          - labels: '{}'
+            value: 0.5
+
+  - name: exhausted-latency-budget-stays-at-zero
+    interval: 1m
+    input_series:
+      - series: 'http_request_duration_seconds_bucket{job="demo-api",handler="/work",le="1.0"}'
+        values: "0+36x10"
+      - series: 'http_request_duration_seconds_count{job="demo-api",handler="/work"}'
+        values: "0+40x10"
+    promql_expr_test:
+      - expr: demo_api:error_budget_latency_remaining:5m
+        eval_time: 6m
+        exp_samples:
+          - labels: '{__name__="demo_api:error_budget_latency_remaining:5m"}'
+            value: 0
+
+  - name: idle-service-does-not-invent-error-budget-samples
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="demo-api",handler="/work",status="200"}'
+        values: "0x10"
+      - series: 'http_request_duration_seconds_bucket{job="demo-api",handler="/work",le="1.0"}'
+        values: "0x10"
+      - series: 'http_request_duration_seconds_count{job="demo-api",handler="/work"}'
+        values: "0x10"
+    promql_expr_test:
+      - expr: demo_api:error_budget_availability_remaining:5m
+        eval_time: 6m
+        exp_samples: []
+      - expr: demo_api:error_budget_latency_remaining:5m
+        eval_time: 6m
+        exp_samples: []
+
   - name: availability-slow-burn
     interval: 15s
 
